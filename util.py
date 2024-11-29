@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from tqdm import tqdm
 import os, argparse, torch, random
-
+from sklearn.metrics import r2_score
 
 def l2_norm(mat1, mat2):
     return np.linalg.norm(mat1 - mat2, 'fro')
@@ -116,14 +116,19 @@ def train_AutoEncoder(model, optimizer, loss_func, scheduler, input_data=None, e
         scheduler.step()
 
         loss_history.append(loss.item())
+        with torch.no_grad():
+            R2 = r2_score(output.flatten().detach().numpy(), input_data.flatten().detach().numpy())
         if epoch % 1000 == 0:
-            print(f'[{epoch}], Loss: {loss.item():.4f}')
+            print(f'[{epoch}], Loss: {loss.item():.4f}, R2: {R2:.4f}')
 
         '''checking convergence'''
         if prev_loss is not None and loss == prev_loss: stag_epochs += 1
         else: stag_epochs = 0
         prev_loss = loss
-
+        
+        if R2==0.999:
+            print('Autoencoder converged')
+            break
         if stag_epochs >= 1000: # if len(loss_history)>=10000: #     if loss_history[-1]==loss_history[-1000]: 
             print('Autoencoder converged')
             break
@@ -182,37 +187,24 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
 
         material_values = []
         for key in sorted_material_keys:
-            # Convert stress data to tensors
-            # stress_values = [torch.tensor(stress_data[key]) for key in stress_data]
-            # for j in range(6):
-            #     stress_values[j] = stress_values[j][torch.randperm(10)]
- 
-            # # Sample data for the current material
-            # data_tensor = torch.tensor(material_data[key])
-            # sampled_indices = random.sample(range(data_tensor.size(0)), num_samples)
-            # sampled_values = data_tensor[sampled_indices]
-            # material_values.append(sampled_values)
             stress_values = [torch.tensor(stress_data[k]) for k in sorted_stress_keys]
             data_tensor = torch.tensor(material_data[key])
             sampled_indices = random.sample(range(data_tensor.size(0)), num_samples)
             sampled_values = data_tensor[sampled_indices]
             material_values.append(sampled_values)
             
-
         stress_tensor = torch.stack(stress_values)
         materials_tensor = torch.stack(material_values)
         combined_tensor = torch.cat([materials_tensor, stress_tensor], dim=0).reshape(len(norm_fact), num_samples).T
         combined_tensor *= norm_fact
         compressed_data[i] = combined_tensor
-
-    # compressed_data /= 100
     return compressed_data
 
 
 def plot_pred(compressed_data_tensor, reconstructed_data, r2, file_name='autoencoder_reconstruction_evaluation'):
     plt.figure(figsize=(5, 5))
     plt.scatter(compressed_data_tensor.detach().numpy(), reconstructed_data, s=10, color='blue', alpha=0.25, label=rf'$R^2={r2:.2f}$')
-    plt.plot([-10, 100], [-10, 100], '--', color='red')
+    plt.plot([-50, 500], [-50, 500], '--', linewidth=2, color='red')
     plt.ylabel(r'Reconstructed data', fontsize=15)
     plt.xlabel(r'Original data', fontsize=15)
     plt.legend(fontsize=15)
