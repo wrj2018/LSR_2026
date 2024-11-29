@@ -15,7 +15,7 @@ parser.add_argument("-repeat", "--repeat_samples", default=25, type=int)
 parser.add_argument("-eig", "--eig_dim", default=3, type=int)
 parser.add_argument("-hid", "--hid_dim", default=256, type=int)
 parser.add_argument("-lr", "--learning_rate", default=0.01, type=float)
-parser.add_argument("-ep", "--epochs", default=10000, type=int)
+parser.add_argument("-ep", "--epochs", default=100000, type=int)
 args = parser.parse_args()
 
 os.makedirs('fig', exist_ok=True)
@@ -24,7 +24,26 @@ data_folder = "12_ML_data"; data_dict = {}
 
 num_samples, mat_num, feat_num = 10, 12, 18 # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
 compressed_data = torch.zeros((mat_num, int(args.repeat_samples * num_samples), feat_num))
-norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
+# norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
+norm_fact = torch.tensor([  1.0,   # 'C11'
+                            1.0,   # 'C12'
+                            1.0,   # 'C44'
+                            -10.0,   # 'Cohesive_energy'
+                            10.0, # 'ISS_110'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_123'
+                            10.0,   # 'Lattice_constants'
+                            1000.0, # 'Normalized_LD'
+                            1e-1,  # 'USFE_110'
+                            1e-1,  # 'USFE_112'
+                            1e-1,  # 'USFE_123'
+                            1e-1,   # 'LSR_edge_110'
+                            1e-1,   # 'LSR_edge_112'
+                            1e-1,   # 'LSR_edge_123'
+                            1e-1, # 'LSR_screw_110'
+                            1e-1, # 'LSR_screw_112'
+                            1e-1, # 'LSR_screw_123'
+                        ])
 
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
 torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)

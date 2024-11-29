@@ -16,7 +16,25 @@ data_folder = "12_ML_data"; data_dict = {}
 
 num_samples = 10
 compressed_data = torch.zeros((12, int(args.repeat_samples*num_samples), 18))
-norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
+norm_fact = torch.tensor([  1.0,   # 'C11'
+                            1.0,   # 'C12'
+                            1.0,   # 'C44'
+                            -10.0,   # 'Cohesive_energy'
+                            10.0, # 'ISS_110'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_123'
+                            10.0,   # 'Lattice_constants'
+                            1000.0, # 'Normalized_LD'
+                            1e-1,  # 'USFE_110'
+                            1e-1,  # 'USFE_112'
+                            1e-1,  # 'USFE_123'
+                            1e-1,   # 'LSR_edge_110'
+                            1e-1,   # 'LSR_edge_112'
+                            1e-1,   # 'LSR_edge_123'
+                            1e-1, # 'LSR_screw_110'
+                            1e-1, # 'LSR_screw_112'
+                            1e-1, # 'LSR_screw_123'
+                        ])
 
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
 torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)
@@ -29,8 +47,11 @@ for sample_id in tqdm(range(args.repeat_samples)):
     compressed_data[:, sample_id*num_samples:(sample_id+1)*num_samples, :] = tmp_data
 
 mat_keys = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi","7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-y_labels = [r'$E_{\rm coh}$', r'$C_{12}$', r'$\tau^{112}_{\rm iss}$', r'$a_0$', r'$\tau^{123}_{\rm iss}$', r'$\gamma^{110}_{\rm usf}$', r'$C_{44}$', r'$C_{11}$', r'$\gamma^{112}_{\rm usf}$', r'$\gamma^{123}_{\rm usf}$', r'$\tau^{110}_{\rm iss}$', r'$\delta$']
-x_labels = [r"$\rm screw\  \{112\}$", r"$\rm screw\  \{123\}$", r"$\rm edge\  \{123\}$", r"$\rm edge\  \{112\}$", r"$\rm edge\ \{110\}$", r"$\rm screw\  \{110\}$"]
+y_labels = [r'$C_{11}$', r'$C_{12}$', r'$C_{44}$', r'$E_{\rm coh}$',\
+    r'$\tau^{110}_{\rm iss}$', r'$\tau^{112}_{\rm iss}$', r'$\tau^{123}_{\rm iss}$',\
+        r'$a_0$', r'$\delta$', r'$\gamma^{110}_{\rm usf}$', r'$\gamma^{112}_{\rm usf}$', r'$\gamma^{123}_{\rm usf}$']
+
+x_labels = [r"$\rm edge\ \{110\}$", r"$\rm edge\  \{112\}$", r"$\rm edge\  \{123\}$", r"$\rm screw\ \{110\}$", r"$\rm screw\  \{112\}$", r"$\rm screw\  \{123\}$" ]
 
 spearman_all_mat, spearman_all_dir = np.zeros((6, 6)), np.zeros((6, 6))
 

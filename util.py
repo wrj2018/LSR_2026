@@ -68,8 +68,8 @@ def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbT
         else:
             plt.imshow(final_spearman_coeff_mat.T, cmap='seismic', vmin=-1, vmax=1)
 
-        plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
-        plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
+        # plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
+        # plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
 
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=10) 
@@ -92,8 +92,8 @@ def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbT
                 "mathtext.fontset": "stix", "legend.fontsize": 10,
                 "axes.labelsize": 12, "xtick.labelsize": 15, "ytick.labelsize": 15})
         plt.imshow(final_spearman_coeff_mat.T, cmap='seismic', vmin=-1, vmax=1)
-        plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
-        plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
+        # plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
+        # plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=10) 
         plt.title(r'Spearman Correlation', fontsize=15)
@@ -177,14 +177,22 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         stress_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" in key}
         material_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" not in key}
 
+        sorted_material_keys = sorted(material_data.keys())
+        sorted_stress_keys = sorted(stress_data.keys())
+
         material_values = []
-        for key in material_data:
+        for key in sorted_material_keys:
             # Convert stress data to tensors
-            stress_values = [torch.tensor(stress_data[key]) for key in stress_data]
-            for j in range(6):
-                stress_values[j] = stress_values[j][torch.randperm(10)]
+            # stress_values = [torch.tensor(stress_data[key]) for key in stress_data]
+            # for j in range(6):
+            #     stress_values[j] = stress_values[j][torch.randperm(10)]
  
-            # Sample data for the current material
+            # # Sample data for the current material
+            # data_tensor = torch.tensor(material_data[key])
+            # sampled_indices = random.sample(range(data_tensor.size(0)), num_samples)
+            # sampled_values = data_tensor[sampled_indices]
+            # material_values.append(sampled_values)
+            stress_values = [torch.tensor(stress_data[k]) for k in sorted_stress_keys]
             data_tensor = torch.tensor(material_data[key])
             sampled_indices = random.sample(range(data_tensor.size(0)), num_samples)
             sampled_values = data_tensor[sampled_indices]
@@ -193,11 +201,11 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
 
         stress_tensor = torch.stack(stress_values)
         materials_tensor = torch.stack(material_values)
-        combined_tensor = torch.cat([stress_tensor, materials_tensor], dim=0).reshape(len(norm_fact), num_samples).T
+        combined_tensor = torch.cat([materials_tensor, stress_tensor], dim=0).reshape(len(norm_fact), num_samples).T
         combined_tensor *= norm_fact
         compressed_data[i] = combined_tensor
 
-    compressed_data /= 100
+    # compressed_data /= 100
     return compressed_data
 
 

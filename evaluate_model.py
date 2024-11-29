@@ -19,7 +19,26 @@ num_samples = 10; os.makedirs('fig', exist_ok=True)
 
 data_folder = "12_ML_data"
 materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi","7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
+# norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
+norm_fact = torch.tensor([  1.0,   # 'C11'
+                            1.0,   # 'C12'
+                            1.0,   # 'C44'
+                            -10.0,   # 'Cohesive_energy'
+                            10.0, # 'ISS_110'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_123'
+                            10.0,   # 'Lattice_constants'
+                            1000.0, # 'Normalized_LD'
+                            1e-1,  # 'USFE_110'
+                            1e-1,  # 'USFE_112'
+                            1e-1,  # 'USFE_123'
+                            1e-1,   # 'LSR_edge_110'
+                            1e-1,   # 'LSR_edge_112'
+                            1e-1,   # 'LSR_edge_123'
+                            1e-1, # 'LSR_screw_110'
+                            1e-1, # 'LSR_screw_112'
+                            1e-1, # 'LSR_screw_123'
+                        ])
 
 compressed_data = prepropress_data(data_folder, materials, norm_fact, num_samples, args.new_seed)
 
