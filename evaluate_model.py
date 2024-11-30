@@ -19,7 +19,6 @@ num_samples = 10; os.makedirs('fig', exist_ok=True)
 
 data_folder = "12_ML_data"
 materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi","7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-# norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
 norm_fact = torch.tensor([  1.0,   # 'C11'
                             1.0,   # 'C12'
                             1.0,   # 'C44'

@@ -79,7 +79,10 @@ for material in tqdm(range(12)): # evaluating the material parameters -> `y_labe
     plot_coeff_mat(matl_spearman_coeff_mat, np.array(x_labels), np.array(y_labels), material, dir='fig', key='matl')
     spearman_all_mat += matl_spearman_coeff_mat
 
-plot_coeff_mat(spearman_all_mat/12, np.array(x_labels), np.array(y_labels), material='all', dir='fig', key='matl_ALL')
+# plot_coeff_mat(spearman_all_mat/12, np.array(x_labels), np.array(y_labels), material='all', dir='fig', key='matl_ALL')
+plot_coeff_mat(spearman_all_mat[:,[0,1,2,3,7,8]]/12, np.array(x_labels), np.array([y_labels[i] for i in [0,1,2,3,7,8]]), material='all', dir='fig', key='matl_ALL')
+plot_coeff_mat(spearman_all_mat[:,[4,5,6,9,10,11]]/12, np.array(x_labels), np.array([y_labels[i] for i in [4,5,6,9,10,11]]), material='all', dir='fig', key='direct_ALL')
+
 
 '''Interactions between stress components'''
 stress_spearman_coeff_mat = np.zeros((6, 6))

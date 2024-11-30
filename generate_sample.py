@@ -91,6 +91,7 @@ def visualize_latent(points_3d):
     plt.tight_layout()
     plt.savefig('fig/latent_mat', transparent=True, dpi=300); plt.show()
 
+
 def visualize_convex_hull_and_samples(points_3d, sampled_points):
     fig = plt.figure(figsize=(5, 5))
     ax = fig.add_subplot(111, projection='3d')

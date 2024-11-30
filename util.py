@@ -26,30 +26,6 @@ def plot_error_convergence(num_seeds, spearman_matrices, final_spearman_coeff_ma
     del errors
 
 
-# def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbTaTi', dir=None, key=None):
-#     if key=='dirc' or key=='dirc_ALL':
-#         valid_ind = np.array([0,5],[1,5],[0,4],[1,4], [2,3],[3,3],[2,2],[3,2], [4,1],[5,1],[4,0],[5,0])
-    # plt.figure(figsize=(5, 5))
-    # plt.imshow(final_spearman_coeff_mat.T, cmap='seismic', vmin=-1, vmax=1)
-    # plt.colorbar()
-    # plt.title(f'Spearman Correlation:\n {material}')
-    # plt.xticks(ticks=np.arange(len(x_labels)), labels=x_labels, rotation=45, ha='right')
-    # plt.yticks(ticks=np.arange(len(y_labels)), labels=y_labels)
-
-#     if key == 'dirc' or key == 'dirc_ALL':
-#         for ind in valid_ind:
-#             plt.scatter(ind[0], ind[1], color='red', s=100, marker='o', edgecolor='black', label='Valid Indices')
-#         else:
-#             for i in range(final_spearman_coeff_mat.shape[0]):
-#                 for j in range(final_spearman_coeff_mat.shape[1]):
-#                     if [i, j] not in valid_ind.tolist():  # Check if the index is not in valid_ind
-#                         plt.scatter(i, j, color='black', s=50, marker='x', label='Invalid Indices')
-#     plt.tight_layout()
-
-#     plt.savefig(f"{dir}/spearman_coeff_{material}_{key}.png", dpi=300)
-#     plt.close()
-
-
 def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbTaTi', dir=None, key=None, direct_corr=False):
     if key == 'dirc' or key == 'dirc_ALL':
         # valid_ind = np.array([[0, 5], [1, 5], [0, 4], [1, 4], [2, 3], [3, 3], [2, 2], [3, 2], [4, 1], [5, 1], [4, 0], [5, 0]])
@@ -68,8 +44,7 @@ def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbT
         else:
             plt.imshow(final_spearman_coeff_mat.T, cmap='seismic', vmin=-1, vmax=1)
 
-        # plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
-        # plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
+        plt.axvline(x=2.5, color='black', linewidth=1)  # Line at the 3 column
 
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=10) 
@@ -92,8 +67,8 @@ def plot_coeff_mat(final_spearman_coeff_mat, x_labels, y_labels, material='1_NbT
                 "mathtext.fontset": "stix", "legend.fontsize": 10,
                 "axes.labelsize": 12, "xtick.labelsize": 15, "ytick.labelsize": 15})
         plt.imshow(final_spearman_coeff_mat.T, cmap='seismic', vmin=-1, vmax=1)
-        # plt.axvline(x=1.5, color='black', linewidth=1)  # Line at the 2nd column
-        # plt.axvline(x=3.5, color='black', linewidth=1)  # Line at the 4th column
+        if key != 'stress':
+            plt.axvline(x=2.5, color='black', linewidth=1)  # Line at the 3 column
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=10) 
         plt.title(r'Spearman Correlation', fontsize=15)
@@ -150,7 +125,7 @@ class Autoencoder(torch.nn.Module):
             torch.nn.Linear(eigen_dim, int(hidden_dim/2)), 
             torch.nn.ReLU(),
             torch.nn.Linear(int(hidden_dim/2), hidden_dim),
-            torch.nn.ReLU(), # 
+            torch.nn.ReLU(),
             torch.nn.Linear(hidden_dim, 18)
         )
 
@@ -192,7 +167,7 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
             sampled_indices = random.sample(range(data_tensor.size(0)), num_samples)
             sampled_values = data_tensor[sampled_indices]
             material_values.append(sampled_values)
-            
+
         stress_tensor = torch.stack(stress_values)
         materials_tensor = torch.stack(material_values)
         combined_tensor = torch.cat([materials_tensor, stress_tensor], dim=0).reshape(len(norm_fact), num_samples).T
