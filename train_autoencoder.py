@@ -24,7 +24,6 @@ data_folder = "12_ML_data"; data_dict = {}
 
 num_samples, mat_num, feat_num = 10, 12, 18 # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
 compressed_data = torch.zeros((mat_num, int(args.repeat_samples * num_samples), feat_num))
-# norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
 norm_fact = torch.tensor([  1.0,   # 'C11'
                             1.0,   # 'C12'
                             1.0,   # 'C44'

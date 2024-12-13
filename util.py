@@ -7,6 +7,7 @@ from tqdm import tqdm
 import os, argparse, torch, random
 from sklearn.metrics import r2_score
 
+
 def l2_norm(mat1, mat2):
     return np.linalg.norm(mat1 - mat2, 'fro')
 

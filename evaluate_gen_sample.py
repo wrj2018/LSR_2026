@@ -10,6 +10,7 @@ import os, argparse
 parser = argparse.ArgumentParser(description="specify the parameters for the test case")
 parser.add_argument("-seed", "--random_seed", default=152, type=int)
 parser.add_argument("-new_seed", "--new_seed", default=24, type=int)
+parser.add_argument("-samp", "--new_samples", default=1000, type=int)
 args = parser.parse_args()
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
 torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)
@@ -54,7 +55,7 @@ for material in tqdm(range(12)): # evaluating the material parameters -> `y_labe
 
     for i in range(6): # stress data -> 110, 112, 123
         for j in range(12): # material data
-            min_len = 1000
+            min_len = args.new_samples
             
             strs_dat = stress_dat[:,i]
             matl_dat = material_dat[:,j];
@@ -71,7 +72,7 @@ for material in tqdm(range(12)): # evaluating the material parameters -> `y_labe
                 ax.set_xticks([]); ax.set_yticks([])
                 if i == 5: ax.set_xlabel(f'{y_labels[j]}', fontsize=10)
                 if j == 0: ax.set_ylabel(f'{x_labels[i]}', fontsize=10)
-    
+
     if direct_viz_samples:
         plt.tight_layout(rect=[0, 0, 1, 0.95]); plt.savefig(f'fig/Material_{material}_correlation.png', dpi=300)  # Save the figure
         print(f'Figure saved! {mat_keys[material]}'); plt.close(fig)
@@ -101,5 +102,7 @@ for material in tqdm(range(12)):
                     stress_pval_coeff_mat[i, j] = stress_pval_coeff
                 else:
                     tmp_stress_spearman_coeff_mat[i, j], stress_pval_coeff_mat[i, j] = 0, 0
+            else: tmp_stress_spearman_coeff_mat[i, j], stress_pval_coeff_mat[i, j] = 1.0, 0
     stress_spearman_coeff_mat += tmp_stress_spearman_coeff_mat
 plot_coeff_mat(stress_spearman_coeff_mat/12, x_labels, x_labels, material='all', dir='fig', key='stress')
+print('Stress-interaction coefficients:\n', stress_spearman_coeff_mat/12)
