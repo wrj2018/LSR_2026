@@ -115,7 +115,7 @@ class Autoencoder(torch.nn.Module):
         super(Autoencoder, self).__init__()
 
         self.encoder = torch.nn.Sequential(
-            torch.nn.Linear(18, hidden_dim),
+            torch.nn.Linear(24, hidden_dim),
             torch.nn.ReLU(), 
             torch.nn.Linear(hidden_dim, int(hidden_dim/2)), 
             torch.nn.ReLU(),
@@ -126,7 +126,7 @@ class Autoencoder(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(int(hidden_dim/2), hidden_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, 18)
+            torch.nn.Linear(hidden_dim, 24)
         )
 
     def forward(self, x):
@@ -153,6 +153,7 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
     compressed_data = torch.zeros((len(materials), num_samples, len(norm_fact)))
 
     for i, material in enumerate(materials):
+
         material_data_dict = {key: data_dict[key] for key in data_dict if material in key}
         stress_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" in key}
         material_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" not in key}
@@ -171,8 +172,10 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         stress_tensor = torch.stack(stress_values)
         materials_tensor = torch.stack(material_values)
         combined_tensor = torch.cat([materials_tensor, stress_tensor], dim=0).reshape(len(norm_fact), num_samples).T
+
         combined_tensor *= norm_fact
         compressed_data[i] = combined_tensor
+
     return compressed_data
 
 

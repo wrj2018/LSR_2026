@@ -4,6 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy import stats
+from statsmodels.sandbox.distributions.genpareto import shape
 from tqdm import tqdm
 from util import *
 from sklearn.metrics import r2_score
@@ -22,7 +23,7 @@ os.makedirs('fig', exist_ok=True)
 materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi", "7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
 data_folder = "12_ML_data"; data_dict = {}
 
-num_samples, mat_num, feat_num = 10, 12, 18 # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
+num_samples, mat_num, feat_num = 10, 12, 24 # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
 compressed_data = torch.zeros((mat_num, int(args.repeat_samples * num_samples), feat_num))
 # norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
 norm_fact = torch.tensor([  1.0,   # 'C11'
@@ -43,6 +44,12 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1e-1, # 'LSR_screw_110'
                             1e-1, # 'LSR_screw_112'
                             1e-1, # 'LSR_screw_123'
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0
                         ])
 
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
@@ -52,6 +59,10 @@ seeds = np.random.randint(0, 9999, int(args.repeat_samples)).tolist()
 for sample_id in tqdm(range(args.repeat_samples)):
     tmp_data = prepropress_data(data_folder, materials, norm_fact, num_samples, seeds[sample_id])
     compressed_data[:, sample_id*num_samples:(sample_id+1)*num_samples, :] = tmp_data
+
+print(compressed_data)
+exit()
+
 
 model = Autoencoder(eigen_dim=args.eig_dim, hidden_dim=args.hid_dim)
 
