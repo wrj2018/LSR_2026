@@ -60,9 +60,6 @@ for sample_id in tqdm(range(args.repeat_samples)):
     tmp_data = prepropress_data(data_folder, materials, norm_fact, num_samples, seeds[sample_id])
     compressed_data[:, sample_id*num_samples:(sample_id+1)*num_samples, :] = tmp_data
 
-print(compressed_data)
-exit()
-
 
 model = Autoencoder(eigen_dim=args.eig_dim, hidden_dim=args.hid_dim)
 

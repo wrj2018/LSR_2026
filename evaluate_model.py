@@ -37,6 +37,12 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1e-1, # 'LSR_screw_110'
                             1e-1, # 'LSR_screw_112'
                             1e-1, # 'LSR_screw_123'
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0,
+                            1.0
                         ])
 
 compressed_data = prepropress_data(data_folder, materials, norm_fact, num_samples, args.new_seed)
