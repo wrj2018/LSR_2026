@@ -34,12 +34,12 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1e-1, # 'LSR_screw_110'
                             1e-1, # 'LSR_screw_112'
                             1e-1, # 'LSR_screw_123'1.0,
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0
+                            100.0,
+                            100.0,
+                            100.0,
+                            100.0,
+                            100.0,
+                            100.0
                         ])
 
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)

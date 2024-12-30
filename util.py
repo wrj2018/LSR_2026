@@ -159,7 +159,9 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         material_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" not in key}
 
         sorted_material_keys = sorted(material_data.keys())
+        print(sorted_material_keys)
         sorted_stress_keys = sorted(stress_data.keys())
+        #print(sorted_stress_keys)
 
         material_values = []
         for key in sorted_material_keys:
