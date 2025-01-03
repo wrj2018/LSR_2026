@@ -33,7 +33,7 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             100.0, #Element Hf
                             100.0, #Element Mo
                             100.0, #Element Nb
-                            100.0, #Element Ta
+                            100.0, #Element TA
                             100.0, #Element Ti
                             100.0, #Element Zr
                             10.0, # 'ISS_110'
