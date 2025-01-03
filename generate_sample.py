@@ -16,36 +16,39 @@ parser.add_argument("-samp", "--new_samples", default=1000, type=int)
 args = parser.parse_args()
 
 data_folder = "12_ML_data"
-materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi","7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-norm_fact = torch.tensor([  1.0,   # 'C11'
-                            1.0,   # 'C12'
-                            1.0,   # 'C44'
-                            -10.0,   # 'Cohesive_energy'
-                            10.0, # 'ISS_110'
-                            10.0, # 'ISS_112'
-                            10.0, # 'ISS_123'
-                            10.0,   # 'Lattice_constants'
-                            1000.0, # 'Normalized_LD'
-                            1e-1,  # 'USFE_110'
-                            1e-1,  # 'USFE_112'
-                            1e-1,  # 'USFE_123'
-                            1e-1,   # 'LSR_edge_110'
-                            1e-1,   # 'LSR_edge_112'
-                            1e-1,   # 'LSR_edge_123'
-                            1e-1, # 'LSR_screw_110'
-                            1e-1, # 'LSR_screw_112'
-                            1e-1, # 'LSR_screw_123'
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0,
-                            1.0
-                        ])
+materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi", "7_TaTiZr", "8_MoTaTi", "9_MoNbTa",
+             "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
+norm_fact = torch.tensor([1.0,  # 'C11'
+                          1.0,  # 'C12'
+                          1.0,  # 'C44'
+                          -10.0,  # 'Cohesive_energy'
+                          10.0,  # 'ISS_110'
+                          10.0,  # 'ISS_112'
+                          10.0,  # 'ISS_123'
+                          10.0,  # 'Lattice_constants'
+                          1000.0,  # 'Normalized_LD'
+                          1e-1,  # 'USFE_110'
+                          1e-1,  # 'USFE_112'
+                          1e-1,  # 'USFE_123'
+                          1e-1,  # 'LSR_edge_110'
+                          1e-1,  # 'LSR_edge_112'
+                          1e-1,  # 'LSR_edge_123'
+                          1e-1,  # 'LSR_screw_110'
+                          1e-1,  # 'LSR_screw_112'
+                          1e-1,  # 'LSR_screw_123'
+                          100.0,
+                          100.0,
+                          100.0,
+                          100.0,
+                          100.0,
+                          100.0
+                          ])
 num_samples = 10
 
-np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
-torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)
+np.random.seed(args.random_seed);
+torch.manual_seed(args.random_seed)
+torch.cuda.manual_seed_all(args.random_seed);
+random.seed(args.random_seed)
 
 compressed_data = prepropress_data(data_folder, materials, norm_fact, num_samples, args.random_seed)
 model_path = 'model/MAT_AutoEnc_Eig3.pth'
@@ -59,6 +62,7 @@ with torch.no_grad():
     reconstructed_data = model(compressed_data_tensor).numpy()
     latent_dim_dat = model.encoder(compressed_data_tensor).numpy()
 compressed_data = latent_dim_dat
+
 
 def sample_convex_hull(points_3d, n_samples=1000):
     hull = ConvexHull(points_3d)
@@ -75,10 +79,12 @@ def sample_convex_hull(points_3d, n_samples=1000):
 
     return np.array(sampled_points)
 
+
 def visualize_latent(points_3d):
     fig = plt.figure(figsize=(5, 5))
     ax = fig.add_subplot(111, projection='3d')
-    cmap = cm.get_cmap('seismic', 12); norm = plt.Normalize(vmin=0, vmax=11)
+    cmap = cm.get_cmap('seismic', 12);
+    norm = plt.Normalize(vmin=0, vmax=11)
 
     for mat_id in range(12):
         color = cmap(norm(mat_id))  # Map material ID to color
@@ -86,33 +92,44 @@ def visualize_latent(points_3d):
                    color=color, s=25, alpha=0.75)
 
     ax.set_title("Latent Space")
-    ax.set_xlabel(r"$\xi_1$"); ax.set_ylabel(r"$\xi_2$"); ax.set_zlabel(r"$\xi_3$")
+    ax.set_xlabel(r"$\xi_1$");
+    ax.set_ylabel(r"$\xi_2$");
+    ax.set_zlabel(r"$\xi_3$")
     ax.set_box_aspect([1, 1, 1])
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    
+
     cbar = plt.colorbar(sm, orientation='vertical', fraction=0.05, pad=0.1)
     cbar.set_label('MPEA ID', fontsize=12)
     cbar.set_ticks([])
     plt.tight_layout()
-    plt.savefig('fig/latent_mat', transparent=True, dpi=300); plt.show()
+    plt.savefig('fig/latent_mat', transparent=True, dpi=300);
+    plt.show()
 
 
 def visualize_convex_hull_and_samples(points_3d, sampled_points):
     fig = plt.figure(figsize=(5, 5))
     ax = fig.add_subplot(111, projection='3d')
 
-    ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], color='blue', s=10, label='Original Points', alpha=0.5)
-    hull = ConvexHull(points_3d); hull_faces = [points_3d[simplex] for simplex in hull.simplices]
+    ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], color='blue', s=10, label='Original Points',
+               alpha=0.5)
+    hull = ConvexHull(points_3d);
+    hull_faces = [points_3d[simplex] for simplex in hull.simplices]
     poly3d = Poly3DCollection(hull_faces, color='cyan', alpha=0.25, edgecolor='k')
     ax.add_collection3d(poly3d)
 
-    ax.scatter(sampled_points[:, 0], sampled_points[:, 1], sampled_points[:, 2], color='red', s=10, label='Sampled Points', alpha=0.5)
+    ax.scatter(sampled_points[:, 0], sampled_points[:, 1], sampled_points[:, 2], color='red', s=10,
+               label='Sampled Points', alpha=0.5)
     ax.set_box_aspect([1, 1, 1])
     ax.set_title("Convex Hull for Latent Space", fontsize=15)
-    ax.set_xlabel(r"$\xi_1$"); ax.set_ylabel(r"$\xi_2$"); ax.set_zlabel(r"$\xi_3$")
-    ax.legend(); plt.tight_layout()
-    plt.savefig('fig/convex_hull_sample', transparent=True, dpi=300); plt.show()
+    ax.set_xlabel(r"$\xi_1$");
+    ax.set_ylabel(r"$\xi_2$");
+    ax.set_zlabel(r"$\xi_3$")
+    ax.legend();
+    plt.tight_layout()
+    plt.savefig('fig/convex_hull_sample', transparent=True, dpi=300);
+    plt.show()
+
 
 assert compressed_data.shape[1] >= 3, "Data must have at least 3 dimensions for a 3D surface plot."
 points_3d = compressed_data.reshape(120, 3)  # Extract the 3D latent space
@@ -125,15 +142,17 @@ visualize_latent(compressed_data)
 
 sampled_points_tensor = torch.tensor(sampled_points, dtype=torch.float32)
 decoded_samples = model.decoder(sampled_points_tensor)
-decoded_samples = torch.abs(decoded_samples.reshape(12,int(n_samples/12),24))
+decoded_samples = torch.abs(decoded_samples.reshape(12, int(n_samples / 12), 24))
 
 ''' plot the histogram of original and reconstructed data '''
 compressed_np, reconstructed_np = compressed_data_tensor.numpy(), reconstructed_data
-cmap = cm.get_cmap('seismic', 12); norm = plt.Normalize(vmin=0, vmax=11)
-fig, axes = plt.subplots(1, 2, figsize=(9, 5)); fig.tight_layout(pad=5)
+cmap = cm.get_cmap('seismic', 12);
+norm = plt.Normalize(vmin=0, vmax=11)
+fig, axes = plt.subplots(1, 2, figsize=(9, 5));
+fig.tight_layout(pad=5)
 
 for i in range(12):
-    color = cmap(norm(i)) 
+    color = cmap(norm(i))
     stress_compressed = compressed_np[i, :, :6].flatten()  # Flatten to 1D
     stress_reconstructed = reconstructed_np[i, :, :6].flatten()
     params_compressed = compressed_np[i, :, 6:].flatten()
@@ -142,17 +161,22 @@ for i in range(12):
     ax = axes[0]
     ax.hist(stress_compressed, bins=10, alpha=0.5, color=color)
     ax.hist(params_compressed, bins=10, alpha=0.5, color=color)
-    ax.set_yscale('log'); ax.grid()
-    ax.set_xlabel('Original data', fontsize=15); ax.set_ylabel('Count', fontsize=15)
+    ax.set_yscale('log');
+    ax.grid()
+    ax.set_xlabel('Original data', fontsize=15);
+    ax.set_ylabel('Count', fontsize=15)
 
     ax = axes[1]
     ax.hist(stress_reconstructed, bins=10, alpha=0.5, color=color)
     ax.hist(params_reconstructed, bins=10, alpha=0.5, color=color)
-    ax.set_yscale('log'); ax.grid()
-    ax.set_xlabel('Reconstructed data', fontsize=15); ax.set_ylabel('Count', fontsize=15)
+    ax.set_yscale('log');
+    ax.grid()
+    ax.set_xlabel('Reconstructed data', fontsize=15);
+    ax.set_ylabel('Count', fontsize=15)
 
 sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([]); plt.tight_layout()
+sm.set_array([]);
+plt.tight_layout()
 
 cbar = plt.colorbar(sm, ax=axes, orientation='vertical', fraction=0.05, pad=0.02)
 cbar.set_label('MPEA ID', fontsize=12)
@@ -160,23 +184,43 @@ cbar.set_ticks([])
 plt.savefig('fig/fig_reconstr', dpi=300)
 plt.close('all')
 
-cmap = cm.get_cmap('seismic', 12); norm = plt.Normalize(vmin=0, vmax=11)
+cmap = cm.get_cmap('seismic', 12);
+norm = plt.Normalize(vmin=0, vmax=11)
 fig = plt.figure(figsize=(5, 5))
 for i in range(12):
-    color = cmap(norm(i)) 
+    color = cmap(norm(i))
     stress_reconstructed = decoded_samples[i, :, :6].flatten().detach().numpy()
     mat_reconstructed = decoded_samples[i, :, 6:].flatten().detach().numpy()
-    plt.hist(stress_reconstructed, bins=99, alpha=0.25, label=f'Material {i+1}', color=color)
+    plt.hist(stress_reconstructed, bins=99, alpha=0.25, label=f'Material {i + 1}', color=color)
     plt.hist(mat_reconstructed, bins=99, alpha=0.25, color=color)
     plt.yscale('log')
-    plt.xlabel('Generated data', fontsize=15); plt.ylabel('Count', fontsize=15)
+    plt.xlabel('Generated data', fontsize=15);
+    plt.ylabel('Count', fontsize=15)
 
-sm = cm.ScalarMappable(cmap=cmap, norm=norm); sm.set_array([])
+sm = cm.ScalarMappable(cmap=cmap, norm=norm);
+sm.set_array([])
 cbar = plt.colorbar(sm, orientation='vertical', fraction=0.05, pad=0.02)
 cbar.set_label('MPEA ID', fontsize=12)
-cbar.set_ticks([]); plt.tight_layout()
+cbar.set_ticks([]);
+plt.tight_layout()
 plt.savefig('fig/fig_gen', dpi=300)
 
-decoded_samples_np = decoded_samples.detach().cpu().numpy()  # Convert to NumPy array
+decoded_samples_np = decoded_samples.detach().cpu().numpy()
+#arjun
+import pandas as pd
+Alloys = ['NbTaTi_C11', 'MoNbTi_C11', 'HfNbTa_C11', 'NbTiZr_C11', 'HfNbTi_C11', 'HfTaTi_C11', 'TaTiZr_C11',
+          'MoTaTi_C11', 'MoNbTa_C11', 'HfNbTaTi_C11', 'HfMoNbTaTi_C11', 'HfNbTaTiZr_C11']
+df = pd.DataFrame(columns=['Alloys', 'C11', 'C12', 'C44', 'Cohesive_energy', 'Hf', 'ISS_110', 'ISS_112', 'ISS_123',
+                           'Lattice_constants', 'Mo', 'Nb', 'Normalized_LD', 'Ta', 'Ti', 'USFE_110', 'USFE_112',
+                           'USFE_123', 'Zr'])
+for i in range(12):
+    for j in range(1000):
+        data = decoded_samples_np[i, j]
+        data_list = data.tolist()
+        data_list.insert(0, Alloys[i])
+        print(data_list)
+        df.loc[len(df)] = data_list
+        print(df)
+exit()
 print(f"Decoded samples shape: {decoded_samples.shape}, {decoded_samples_np.shape}")
 np.save("decoded_samples.npy", np.abs(decoded_samples_np))  # Save as .npy file
