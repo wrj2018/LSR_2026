@@ -161,7 +161,7 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         sorted_material_keys = sorted(material_data.keys())
         print(sorted_material_keys)
         sorted_stress_keys = sorted(stress_data.keys())
-        #print(sorted_stress_keys)
+        print(sorted_stress_keys)
 
         material_values = []
         for key in sorted_material_keys:
