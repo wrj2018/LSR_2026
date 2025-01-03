@@ -1,3 +1,4 @@
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -19,65 +20,61 @@ parser.add_argument("-ep", "--epochs", default=100000, type=int)
 args = parser.parse_args()
 
 os.makedirs('fig', exist_ok=True)
-materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi", "7_TaTiZr", "8_MoTaTi", "9_MoNbTa",
-             "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-data_folder = "12_ML_data";
-data_dict = {}
+materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi", "7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
+data_folder = "12_ML_data"; data_dict = {}
 
-num_samples, mat_num, feat_num = 10, 12, 24  # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
+num_samples, mat_num, feat_num = 10, 12, 24 # number of samples in the raw data, total number of materials, raw feature space (stress + mat param.)
 compressed_data = torch.zeros((mat_num, int(args.repeat_samples * num_samples), feat_num))
 # norm_fact = torch.tensor([1,1,1,1,1,1,-100,10,100,100,100,10,10,1,1,1,100,10000])
-norm_fact = torch.tensor([1.0,  # 'C11'
-                          1.0,  # 'C12'
-                          1.0,  # 'C44'
-                          -10.0,  # 'Cohesive_energy'
-                          10.0,  # 'ISS_110'
-                          10.0,  # 'ISS_112'
-                          10.0,  # 'ISS_123'
-                          10.0,  # 'Lattice_constants'
-                          1000.0,  # 'Normalized_LD'
-                          1e-1,  # 'USFE_110'
-                          1e-1,  # 'USFE_112'
-                          1e-1,  # 'USFE_123'
-                          1e-1,  # 'LSR_edge_110'
-                          1e-1,  # 'LSR_edge_112'
-                          1e-1,  # 'LSR_edge_123'
-                          1e-1,  # 'LSR_screw_110'
-                          1e-1,  # 'LSR_screw_112'
-                          1e-1,  # 'LSR_screw_123'
-                          100.0,  # Hf
-                          100.0,  # Mo
-                          100.0,  # Nb
-                          100.0,  # Ta
-                          100.0,  # Ti
-                          100.0  # Zr
-                          ])
+norm_fact = torch.tensor([  1.0,   # 'C11'
+                            1.0,   # 'C12'
+                            1.0,   # 'C44'
+                            -10.0,   # 'Cohesive_energy'
+                            100.0, #Element Hf
+                            100.0, #Element Mo
+                            100.0, #Element Nb
+                            100.0, #Element Ta
+                            100.0, #Element Ti
+                            100.0, #Element Zr
+                            10.0, # 'ISS_110'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_123'
+                            10.0,   # 'Lattice_constants'
+                            1000.0, # 'Normalized_LD'
+                            1e-1,  # 'USFE_110'
+                            1e-1,  # 'USFE_112'
+                            1e-1,  # 'USFE_123'
+                            1e-1,   # 'LSR_edge_110'
+                            1e-1,   # 'LSR_edge_112'
+                            1e-1,   # 'LSR_edge_123'
+                            1e-1, # 'LSR_screw_110'
+                            1e-1, # 'LSR_screw_112'
+                            1e-1, # 'LSR_screw_123'
+                        ])
 
-np.random.seed(args.random_seed);
-torch.manual_seed(args.random_seed)
-torch.cuda.manual_seed_all(args.random_seed);
-random.seed(args.random_seed)
+np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
+torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)
 seeds = np.random.randint(0, 9999, int(args.repeat_samples)).tolist()
 
 for sample_id in tqdm(range(args.repeat_samples)):
     tmp_data = prepropress_data(data_folder, materials, norm_fact, num_samples, seeds[sample_id])
-    compressed_data[:, sample_id * num_samples:(sample_id + 1) * num_samples, :] = tmp_data
+    compressed_data[:, sample_id*num_samples:(sample_id+1)*num_samples, :] = tmp_data
+
 
 model = Autoencoder(eigen_dim=args.eig_dim, hidden_dim=args.hid_dim)
 
 compressed_data_tensor = compressed_data.clone().detach().requires_grad_(True)
 loss_func = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.5)  # scheduler for damping
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.5) # scheduler for damping
 
-loss_history = train_AutoEncoder(model, optimizer, loss_func, scheduler, input_data=compressed_data_tensor,
-                                 epochs=args.epochs)
+loss_history = train_AutoEncoder(model, optimizer, loss_func, scheduler, input_data=compressed_data_tensor, epochs=args.epochs)
 
 os.makedirs('model', exist_ok=True)
 torch.save({'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict()},
-           f'model/MAT_AutoEnc_Eig3.pth')
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict()}, 
+        f'model/MAT_AutoEnc_Eig3.pth')
 
 with torch.no_grad():
     latent_dim_dat = model.encoder(compressed_data_tensor).numpy()

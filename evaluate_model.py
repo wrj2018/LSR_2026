@@ -23,6 +23,12 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1.0,   # 'C12'
                             1.0,   # 'C44'
                             -10.0,   # 'Cohesive_energy'
+                            100.0, #Element Hf
+                            100.0, #Element Mo
+                            100.0, #Element Nb
+                            100.0, #Element Ta
+                            100.0, #Element Ti
+                            100.0, #Element Zr
                             10.0, # 'ISS_110'
                             10.0, # 'ISS_112'
                             10.0, # 'ISS_123'
@@ -37,12 +43,6 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1e-1, # 'LSR_screw_110'
                             1e-1, # 'LSR_screw_112'
                             1e-1, # 'LSR_screw_123'
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0
                         ])
 
 compressed_data = prepropress_data(data_folder, materials, norm_fact, num_samples, args.new_seed)
@@ -59,6 +59,5 @@ with torch.no_grad():
     latent_dim_dat = model.encoder(compressed_data_tensor).numpy()
 
 r2 = r2_score(compressed_data_tensor.flatten().numpy(), reconstructed_data.flatten())
-print(compressed_data_tensor.flatten().numpy().shape())
-exit()
+
 plot_pred(compressed_data_tensor, reconstructed_data, r2)
