@@ -31,19 +31,19 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1.0,   # 'C44'
                             -10.0,   # 'Cohesive_energy'
                             100.0, #Element Hf
-                            100.0, #Element Mo
-                            100.0, #Element Nb
-                            100.0, #Element TA
-                            100.0, #Element Ti
-                            100.0, #Element Zr
                             10.0, # 'ISS_110'
                             10.0, # 'ISS_112'
                             10.0, # 'ISS_123'
                             10.0,   # 'Lattice_constants'
+                            100.0, #Element Mo
+                            100.0, #Element Nb
                             1000.0, # 'Normalized_LD'
+                            100.0, #Element Ta
+                            100.0, #Element Ti
                             1e-1,  # 'USFE_110'
                             1e-1,  # 'USFE_112'
                             1e-1,  # 'USFE_123'
+                            100.0, # Element Zr
                             1e-1,   # 'LSR_edge_110'
                             1e-1,   # 'LSR_edge_112'
                             1e-1,   # 'LSR_edge_123'
@@ -51,6 +51,13 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             1e-1, # 'LSR_screw_112'
                             1e-1, # 'LSR_screw_123'
                         ])
+
+# ['12_HfNbTaTiZr_C11', '12_HfNbTaTiZr_C12', '12_HfNbTaTiZr_C44', 
+# '12_HfNbTaTiZr_Cohesive_energy', '12_HfNbTaTiZr_Hf', 
+# '12_HfNbTaTiZr_ISS_110', '12_HfNbTaTiZr_ISS_112', '12_HfNbTaTiZr_ISS_123', '12_HfNbTaTiZr_Lattice_constants', 
+# '12_HfNbTaTiZr_Mo', '12_HfNbTaTiZr_Nb', 
+# '12_HfNbTaTiZr_Normalized_LD', '12_HfNbTaTiZr_Ta', '12_HfNbTaTiZr_Ti', 
+# '12_HfNbTaTiZr_USFE_110', '12_HfNbTaTiZr_USFE_112', '12_HfNbTaTiZr_USFE_123', '12_HfNbTaTiZr_Zr']
 
 np.random.seed(args.random_seed); torch.manual_seed(args.random_seed)
 torch.cuda.manual_seed_all(args.random_seed); random.seed(args.random_seed)
