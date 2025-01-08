@@ -115,7 +115,7 @@ class Autoencoder(torch.nn.Module):
         super(Autoencoder, self).__init__()
 
         self.encoder = torch.nn.Sequential(
-            torch.nn.Linear(18, hidden_dim),
+            torch.nn.Linear(24, hidden_dim),
             torch.nn.ReLU(), 
             torch.nn.Linear(hidden_dim, int(hidden_dim/2)), 
             torch.nn.ReLU(),
@@ -126,7 +126,7 @@ class Autoencoder(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(int(hidden_dim/2), hidden_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, 18)
+            torch.nn.Linear(hidden_dim, 24)
         )
 
     def forward(self, x):
@@ -146,7 +146,7 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         for file in files:
             if file.endswith(".txt"):
                 file_path = os.path.join(root, file)
-                data = pd.read_csv(file_path, delim_whitespace=True, header=None).values
+                data = pd.read_csv(file_path, sep='\s+', header=None).values
                 variable_name = os.path.splitext(file)[0]
                 data_dict[variable_name] = data
 
@@ -157,8 +157,11 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         stress_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" in key}
         material_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" not in key}
 
-        sorted_material_keys = sorted(material_data.keys())
-        sorted_stress_keys = sorted(stress_data.keys())
+        sorted_material_keys = material_data.keys()
+        sorted_stress_keys = stress_data.keys()
+        # print(len(sorted_stress_keys), sorted_stress_keys)
+        # print(len(sorted_material_keys), sorted_material_keys)
+        # exit()
 
         material_values = []
         for key in sorted_material_keys:
