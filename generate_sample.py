@@ -17,10 +17,19 @@ args = parser.parse_args()
 
 data_folder = "12_ML_data"
 materials = ["1_NbTaTi", "2_MoNbTi", "3_HfNbTa", "4_NbTiZr", "5_HfNbTi", "6_HfTaTi","7_TaTiZr", "8_MoTaTi", "9_MoNbTa", "10_HfNbTaTi", "11_HfMoNbTaTi", "12_HfNbTaTiZr"]
-norm_fact = torch.tensor([  1.0,   # 'C11'
+norm_fact = torch.tensor([  1e-1,  # 'USFE_110'
+                            1.0,   # 'C11'
+                            1000, # 'Normalized_LD'
+                            10.0,   # 'Lattice_constants'
+                            10, #Zr
+                            1e-1,  # 'USFE_123'
+                            10.0, # 'ISS_123'
+                            10, #Ti
                             1.0,   # 'C12'
                             1.0,   # 'C44'
+                            10, #Nb
                             -10.0,   # 'Cohesive_energy'
+<<<<<<< HEAD
                             100.0, #Element Hf
                             100.0, #Element Mo
                             100.0, #Element Nb
@@ -33,8 +42,14 @@ norm_fact = torch.tensor([  1.0,   # 'C11'
                             10.0,   # 'Lattice_constants'
                             1000.0, # 'Normalized_LD'
                             1e-1,  # 'USFE_110'
+=======
+                            10, #Mo
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
                             1e-1,  # 'USFE_112'
-                            1e-1,  # 'USFE_123'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_110'
+                            10, #Hf
+                            10, #Ta
                             1e-1,   # 'LSR_edge_110'
                             1e-1,   # 'LSR_edge_112'
                             1e-1,   # 'LSR_edge_123'
@@ -164,8 +179,8 @@ cmap = cm.get_cmap('seismic', 12); norm = plt.Normalize(vmin=0, vmax=11)
 fig = plt.figure(figsize=(5, 5))
 for i in range(12):
     color = cmap(norm(i)) 
-    stress_reconstructed = decoded_samples[i, :, :6].flatten().detach().numpy()
-    mat_reconstructed = decoded_samples[i, :, 6:].flatten().detach().numpy()
+    stress_reconstructed = decoded_samples[i, :, 19:24].flatten().detach().numpy()
+    mat_reconstructed = decoded_samples[i, :, 0:18].flatten().detach().numpy()
     plt.hist(stress_reconstructed, bins=99, alpha=0.25, label=f'Material {i+1}', color=color)
     plt.hist(mat_reconstructed, bins=99, alpha=0.25, color=color)
     plt.yscale('log')
@@ -177,14 +192,23 @@ cbar.set_label('MPEA ID', fontsize=12)
 cbar.set_ticks([]); plt.tight_layout()
 plt.savefig('fig/fig_gen', dpi=300)
 
+<<<<<<< HEAD
 decoded_samples_np = decoded_samples.detach().cpu().numpy()
+=======
+decoded_samples_np = decoded_samples.detach().cpu().numpy()  # Convert to NumPy array
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
 
 #arjun
 import pandas as pd
 Alloys = ['NbTaTi', 'MoNbTi', 'HfNbTa', 'NbTiZr', 'HfNbTi', 'HfTaTi', 'TaTiZr',
           'MoTaTi', 'MoNbTa', 'HfNbTaTi', 'HfMoNbTaTi', 'HfNbTaTiZr']
+<<<<<<< HEAD
 mech_pro = ['1_NbTaTi_C11', '1_NbTaTi_C12', '1_NbTaTi_C44', '1_NbTaTi_Cohesive_energy', '1_NbTaTi_Hf', '1_NbTaTi_ISS_110', '1_NbTaTi_ISS_112', '1_NbTaTi_ISS_123', '1_NbTaTi_Lattice_constants', '1_NbTaTi_Mo', '1_NbTaTi_Nb', '1_NbTaTi_Normalized_LD', '1_NbTaTi_Ta', '1_NbTaTi_Ti', '1_NbTaTi_USFE_110', '1_NbTaTi_USFE_112', '1_NbTaTi_USFE_123', '1_NbTaTi_Zr']
 stress_pars = ['1_NbTaTi_LSR_edge_110', '1_NbTaTi_LSR_edge_112', '1_NbTaTi_LSR_edge_123', '1_NbTaTi_LSR_screw_110', '1_NbTaTi_LSR_screw_112', '1_NbTaTi_LSR_screw_123']
+=======
+mech_pro = ['USFE_110', 'C11', 'Normalized_LD', 'Lattice_constants', 'Zr', 'USFE_123', 'ISS_123', 'Ti', 'C12', 'C44', 'Nb', 'Cohesive_energy', 'Mo', 'USFE_112', 'ISS_112', 'ISS_110', 'Hf', 'Ta']
+stress_pars = ['LSR_edge_110', 'LSR_edge_112', 'LSR_edge_123', 'LSR_screw_110', 'LSR_screw_112', 'LSR_screw_123']
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
 
 features = ['Alloy'] + mech_pro + stress_pars
 df = pd.DataFrame(columns=features)
@@ -197,6 +221,9 @@ for i in range(12):
         df.loc[len(df)] = data_list
 df.to_csv('augmented_data.csv', index=False)
 
+<<<<<<< HEAD
 print(decoded_samples_np.shape)
+=======
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
 print(f"Decoded samples shape: {decoded_samples.shape}, {decoded_samples_np.shape}")
 np.save("decoded_samples.npy", np.abs(decoded_samples_np))  # Save as .npy file

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Black">
+<<<<<<< HEAD
     <option name="sdkName" value="LSR_2024" />
+=======
+    <option name="sdkName" value="Python 3.8 (LSR_2024)" />
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="CMEE" project-jdk-type="Python SDK" />
 </project>

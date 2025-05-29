@@ -146,7 +146,7 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         for file in files:
             if file.endswith(".txt"):
                 file_path = os.path.join(root, file)
-                data = pd.read_csv(file_path, delim_whitespace=True, header=None).values
+                data = pd.read_csv(file_path, sep='\s+', header=None).values
                 variable_name = os.path.splitext(file)[0]
                 data_dict[variable_name] = data
 
@@ -158,10 +158,18 @@ def prepropress_data(data_folder, materials, norm_fact, num_samples=10, seed=Non
         stress_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" in key}
         material_data = {key: material_data_dict[key] for key in material_data_dict if "LSR" not in key}
 
+<<<<<<< HEAD
         sorted_material_keys = sorted(material_data.keys())
         print(sorted_material_keys)
         sorted_stress_keys = sorted(stress_data.keys())
         print(sorted_stress_keys)
+=======
+        sorted_material_keys = material_data.keys()
+        sorted_stress_keys = stress_data.keys()
+        # print(len(sorted_stress_keys), sorted_stress_keys)
+        # print(len(sorted_material_keys), sorted_material_keys)
+        # exit()
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
 
         material_values = []
         for key in sorted_material_keys:

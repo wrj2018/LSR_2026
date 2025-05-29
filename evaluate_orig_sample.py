@@ -16,18 +16,28 @@ data_folder = "12_ML_data"; data_dict = {}
 
 num_samples = 10
 compressed_data = torch.zeros((12, int(args.repeat_samples*num_samples), 24))
+<<<<<<< HEAD
 norm_fact = torch.tensor([  1.0,   # 'C11'
+=======
+norm_fact = torch.tensor([  1e-1,  # 'USFE_110'
+                            1.0,   # 'C11'
+                            1000, # 'Normalized_LD'
+                            10.0,   # 'Lattice_constants'
+                            10, #Zr
+                            1e-1,  # 'USFE_123'
+                            10.0, # 'ISS_123'
+                            10, #Ti
+>>>>>>> d60e6c861123694d76dabc4309dbbffbcccf9bad
                             1.0,   # 'C12'
                             1.0,   # 'C44'
+                            10, #Nb
                             -10.0,   # 'Cohesive_energy'
-                            10.0, # 'ISS_110'
-                            10.0, # 'ISS_112'
-                            10.0, # 'ISS_123'
-                            10.0,   # 'Lattice_constants'
-                            1000.0, # 'Normalized_LD'
-                            1e-1,  # 'USFE_110'
+                            10, #Mo
                             1e-1,  # 'USFE_112'
-                            1e-1,  # 'USFE_123'
+                            10.0, # 'ISS_112'
+                            10.0, # 'ISS_110'
+                            10, #Hf
+                            10, #Ta
                             1e-1,   # 'LSR_edge_110'
                             1e-1,   # 'LSR_edge_112'
                             1e-1,   # 'LSR_edge_123'
