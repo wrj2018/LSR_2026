@@ -3,224 +3,208 @@
 # Written by Wu-Rong Jian to process the data about LSR
 # Usage: python3 Pytorch_fitting_strength_LSR.py
 #*********************************************************************************************************************
-
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
-import matplotlib.pyplot as plt
+import os, sys, argparse, warnings, numpy as np, torch, torch.nn as nn, torch.optim as optim, matplotlib.pyplot as plt
+from tqdm import tqdm
 from sklearn.metrics import r2_score
 from matplotlib.ticker import MultipleLocator
-from tqdm import tqdm
-from util_fitting import *
-################################################# Define model training settings #######################################################
-torch.manual_seed(21)
-np.random.seed(21)
+import util_fitting
 
-# Check if CUDA (GPU) is available and set the device
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+warnings.filterwarnings("ignore", category=UserWarning)
 
-################################################# Prepare data #######################################################
-# Load data from files
-YieldStress_file = "data/YieldStress4strength.txt"
-GrainSize_file = "data/GrainSize4strength.txt"
-StrainRate_file = "data/StrainRate4strength.txt"
-Temp_file = "data/Temp4strength.txt"
-LSR_edge_110_file = "data/edge110LSR4strength.txt"
-LSR_edge_112_file = "data/edge112LSR4strength.txt"
-LSR_edge_123_file = "data/edge123LSR4strength.txt"
-LSR_screw_110_file = "data/screw110LSR4strength.txt"
-LSR_screw_112_file = "data/screw112LSR4strength.txt"
-LSR_screw_123_file = "data/screw123LSR4strength.txt"
+class StrengthTrainer:
+    def __init__(self, args):
+        self.args = args
+        torch.manual_seed(args.seed); np.random.seed(args.seed)
+        self.device = torch.device(f"cuda:{args.cuda_idx}" if (torch.cuda.is_available() and args.cuda) else "cpu")
+        util_fitting.device = self.device
+        print(f"Using device: {self.device}")
+        os.makedirs(args.out_dir, exist_ok=True); os.makedirs(args.fig_dir, exist_ok=True)
+        self.model_path = os.path.join(args.out_dir, "Model.pth")
+        self.model = util_fitting.CustomModel().to(self.device).double()
+        self.criterion = nn.MSELoss()
+        self.optimizer = {"SGD": optim.SGD, "Adam": optim.Adam}[args.optimizer](self.model.parameters(), lr=args.lr)
+        self.loss_hist = []
+        self._load_data()
 
-YieldStress_exp_np = np.loadtxt(YieldStress_file, usecols=[1])
-GrainSize_np = np.loadtxt(GrainSize_file, usecols=[1])
-StrainRate_np = np.loadtxt(StrainRate_file, usecols=[1])
-Temp_np = np.loadtxt(Temp_file, usecols=[1])
+    def _load_txt_col1(self, path): return np.loadtxt(path, usecols=[1])
 
-YieldStress_exp_tensor = torch.tensor(YieldStress_exp_np, dtype=torch.float64, device=device)
-GrainSize_tensor = torch.tensor(GrainSize_np, dtype=torch.float64, device=device)
-StrainRate_tensor = torch.tensor(StrainRate_np, dtype=torch.float64, device=device)
-Temp_tensor = torch.tensor(Temp_np, dtype=torch.float64, device=device)
+    def _load_data(self):
+        d = self.args.data_dir
+        ys_np = self._load_txt_col1(os.path.join(d, "YieldStress4strength.txt"))
+        gs_np = self._load_txt_col1(os.path.join(d, "GrainSize4strength.txt"))
+        sr_np = self._load_txt_col1(os.path.join(d, "StrainRate4strength.txt"))
+        tp_np = self._load_txt_col1(os.path.join(d, "Temp4strength.txt"))
+        parts = [("edge110","screw110"), ("edge112","screw112"), ("edge123","screw123")]
+        cols = []
+        for e, s in parts:
+            cols += [self._load_txt_col1(os.path.join(d, f"{e}LSR4strength.txt")),
+                     self._load_txt_col1(os.path.join(d, f"{s}LSR4strength.txt"))]
+        lsr_np = np.column_stack(cols)
 
-LSR_edge_110 = np.loadtxt(LSR_edge_110_file, usecols=[1])
-LSR_edge_112 = np.loadtxt(LSR_edge_112_file, usecols=[1])
-LSR_edge_123 = np.loadtxt(LSR_edge_123_file, usecols=[1])
-LSR_screw_110 = np.loadtxt(LSR_screw_110_file, usecols=[1])
-LSR_screw_112 = np.loadtxt(LSR_screw_112_file, usecols=[1])
-LSR_screw_123 = np.loadtxt(LSR_screw_123_file, usecols=[1])
-merged_LSR_np = np.column_stack((LSR_edge_110, LSR_screw_110, LSR_edge_112, LSR_screw_112, LSR_edge_123, LSR_screw_123))
-LSR_tensor = torch.tensor(merged_LSR_np, dtype=torch.float64, device=device)
+        self.Y_exp_np = ys_np.copy()
+        self.Y_exp = torch.tensor(ys_np, dtype=torch.float64, device=self.device)
+        self.GS = torch.tensor(gs_np, dtype=torch.float64, device=self.device)
+        self.SR = torch.tensor(sr_np, dtype=torch.float64, device=self.device)
+        self.TP = torch.tensor(tp_np, dtype=torch.float64, device=self.device)
+        self.LSR = torch.tensor(lsr_np, dtype=torch.float64, device=self.device)
+        print("LSR shape:", self.LSR.shape, "| Temp:", self.TP.shape, "| StrainRate:", self.SR.shape, "| GrainSize:", self.GS.shape)
 
-print("LSR_tensor shape:", LSR_tensor.shape)
-print("Temp_tensor shape:", Temp_tensor.shape)
-print("StrainRate_tensor:", StrainRate_tensor.shape)
-print("GrainSize_tensor:", GrainSize_tensor.shape)
+    def train(self):
+        pbar = tqdm(range(self.args.epochs), ncols=100, desc="Training")
+        for ep in pbar:
+            self.model.train(); self.optimizer.zero_grad()
+            pred = self.model(self.LSR, self.TP, self.SR, self.GS)
+            loss = self.criterion(pred, self.Y_exp)
+            loss.backward(); self.optimizer.step()
+            self.loss_hist.append(float(loss.item()))
+            if (ep+1) % self.args.log_int == 0 or ep == 0:
+                pbar.set_postfix(loss=f"{loss.item():.6f}")
+        self._save_losses()
 
+    def _save_losses(self):
+        f = os.path.join(self.args.out_dir, "loss.txt")
+        np.savetxt(f, np.asarray(self.loss_hist))
+        print(f"---> saved data: {f}")
 
-################################################# Train model #######################################################
-# Create model, loss function, and optimizer
-learning_rate = 0.001
-num_epochs = 50000
-OPTIMIZERS = {'SGD': optim.SGD, 'Adam': optim.Adam}
-optimizer_name = 'Adam'
+    def save_artifacts(self):
+        # ----- per-sample a_ij(z) -----
+        self.model.eval()
+        with torch.no_grad():
+            # Build the same context z used inside the model
+            z = self.model._build_context(self.TP, self.SR, self.GS)              # (N,3)
+            A = self.model.subModel1.a_layer(z).detach().cpu().numpy()            # (N,6,6)
+        # Save full matrices and upper-tri vectors
+        fA = os.path.join(self.args.out_dir, "aij_matrices.npy")
+        np.save(fA, A); print(f"---> saved data: {fA}")
+        iu = np.triu_indices(6)
+        A_tri = A[:, iu[0], iu[1]]                                                # (N,21)
+        fAT = os.path.join(self.args.out_dir, "aij_upper_tri.npy")
+        np.save(fAT, A_tri); print(f"---> saved data: {fAT}")
+        # Also save a quick-look mean a_ij over the dataset
+        A_mean = A.mean(axis=0)                                                   # (6,6)
+        fMean = os.path.join(self.args.out_dir, "aij_mean.csv")
+        np.savetxt(fMean, A_mean, delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
+        # ----- RFF layer parameters (to reproduce a_ij(z)) -----
+        al = self.model.subModel1.a_layer
+        rff_params_path = os.path.join(self.args.out_dir, "aij_rff_params.npz")
+        np.savez(rff_params_path,
+                 log_lengthscale=al.log_lengthscale.detach().cpu().numpy(),
+                 W_base=al.W_base.detach().cpu().numpy(),
+                 b=al.b.detach().cpu().numpy(),
+                 lin_weight=al.lin.weight.detach().cpu().numpy(),
+                 lin_bias=al.lin.bias.detach().cpu().numpy(),)
+        print(f"---> saved data: {rff_params_path}")
+        # ----- physics parameters (unchanged) -----
+        f3 = os.path.join(self.args.out_dir, "param_deltaH.txt")
+        np.savetxt(f3, self.model.param_deltaH.detach().cpu().numpy(), fmt="%.4f"); print(f"---> saved data: {f3}")
 
-model = CustomModel().to(device)
-criterion = nn.MSELoss()
-optimizer = OPTIMIZERS[optimizer_name](model.parameters(), lr=learning_rate)
+        f4 = os.path.join(self.args.out_dir, "param_KHP.txt")
+        np.savetxt(f4, self.model.param_KHP.detach().cpu().numpy(), fmt="%.6f"); print(f"---> saved data: {f4}")
+        # ----- model state dict -----
+        torch.save(self.model.state_dict(), self.model_path)
+        print(f"---> saved data: {self.model_path}")
 
-# List to store loss values for plotting
-train_losses = []
+    def load_model_if_exists(self):
+        if os.path.isfile(self.model_path):
+            sd = torch.load(self.model_path, map_location=self.device)
+            self.model.load_state_dict(sd)
+            print(f"Loaded existing model: {self.model_path}")
+            return True
+        return False
 
-# Training loop
-for epoch in tqdm(range(num_epochs)):
-    model.train()
-    optimizer.zero_grad()
-    outputs = model(LSR_tensor, Temp_tensor, StrainRate_tensor, GrainSize_tensor)
-    loss = criterion(outputs, YieldStress_exp_tensor)
-    loss.backward()
-    optimizer.step()
+    def predict(self):
+        self.model.eval()
+        with torch.no_grad():
+            y_pred = self.model(self.LSR, self.TP, self.SR, self.GS).detach().cpu().numpy()
+        return y_pred
 
-    if (epoch + 1) % 100 == 0 or epoch == 0:
-        tqdm.write(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
-    train_losses.append(loss.item())
+    def plot_predictions(self, y_pred):
+        Ncount = [1, 2, 8, 7, 6, 9, 17]
+        labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        colors = [f"C{i}" for i in range(len(Ncount))]
+        markers = ['o','*','^','v','<','>','D']
 
-# Save the loss values to a file
-with open('./outputs/loss.txt', 'w') as f:
-    for value in train_losses:
-        f.write(f"{value}\n")
+        ys_exp_chunks, ys_pred_chunks, idx = [], [], 0
+        for c in Ncount:
+            ys_exp_chunks.append(self.Y_exp_np[idx:idx+c])
+            ys_pred_chunks.append(y_pred[idx:idx+c]); idx += c
 
-if model.subModel1.fc.exponential:
-    trained_exp_weights_1 = torch.exp(model.subModel1.fc.weight.data.clone())
-else:
-    trained_exp_weights_1 = model.subModel1.fc.weight.data.clone()
+        # ---- overall metrics ----
+        y_true_all = self.Y_exp_np
+        y_pred_all = y_pred
+        r2_all = r2_score(y_true_all, y_pred_all)
+        eps = 1e-8
+        mape_all = float(np.mean(np.abs((y_pred_all - y_true_all) / np.maximum(eps, np.abs(y_true_all)))) * 100.0)
 
-trained_exp_weights_1_np = trained_exp_weights_1.cpu().numpy()
+        print(f"Overall R²: {r2_all:.4f} | MAPE: {mape_all:.2f}%")
 
-trained_symmetric_weights_1 = model.subModel1.fc.get_symmetric_weights()
+        plt.figure(figsize=(7.5,7))
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 22
+        plt.rcParams['mathtext.fontset'] = 'stix'
 
-# Convert the tensor to numpy array
-trained_symmetric_weights_1_np = trained_symmetric_weights_1.detach().cpu().numpy()
+        r2s = []
+        for i in range(len(Ncount)):
+            r2s.append(r2_score(ys_exp_chunks[i], ys_pred_chunks[i]))
+            plt.scatter(ys_exp_chunks[i], ys_pred_chunks[i],
+                        color=colors[i], marker=markers[i], label=labels[i], s=45)
 
-# Save interaction aij to a file
-with open('./outputs/interaction_coefficients_aij.txt', 'w') as f:
-    for value in trained_exp_weights_1_np:
-        f.write(f"{value}\n")
+        lim = [0, 3000]
+        plt.plot(lim, lim, 'k--', linewidth=2)
 
-# Save to CSV file
-np.savetxt('./outputs/trained_symmetric_weights_1.csv', trained_symmetric_weights_1_np, delimiter=',', fmt='%.6f')
+        ax = plt.gca()
+        ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+        ax.xaxis.set_minor_locator(MultipleLocator(100))
+        ax.yaxis.set_minor_locator(MultipleLocator(100))
+        plt.xlabel('Experimental yield stress (MPa)')
+        plt.ylabel('Predicted yield stress (MPa)')
+        plt.xlim(lim); plt.ylim(lim)
+        plt.legend(loc='center left', bbox_to_anchor=(1,0.5), frameon=False)
+        for s in ax.spines.values(): s.set_linewidth(2)
 
-# Save param_deltaH to a file
-with open('./outputs/param_deltaH.txt', 'w') as f:
-    for row in model.param_deltaH.detach().cpu().numpy():
-        f.write(' '.join(f"{value:.4f}" for value in row) + '\n')
+        # ---- annotate metrics on top of the plot ----
+        txt = f"Overall R$^2$ = {r2_all:.3f}\nMAPE = {mape_all:.2f}%"
+        ax.text(0.03, 0.97, txt, transform=ax.transAxes, va='top', ha='left',
+                bbox=dict(facecolor='white', edgecolor='none', alpha=0.85))
 
-# Save param_KHP to a file
-with open('./outputs/param_KHP.txt', 'w') as f:
-    for value in model.param_KHP.detach().cpu().numpy():
-        f.write(f"{value}\n")
+        fpng = os.path.join(self.args.fig_dir, "Comparison_yield_stress.png")
+        fpdf = os.path.join(self.args.fig_dir, "Comparison_yield_stress.pdf")
+        plt.savefig(fpng, bbox_inches='tight'); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf, bbox_inches='tight'); print(f"---> saved figure: {fpdf}")
 
-# Save the Model's state dictionary
-torch.save(model.state_dict(), './outputs/Model.pth')
+        f_r2 = os.path.join(self.args.out_dir, "r2_MPEAs.txt")
+        np.savetxt(f_r2, np.asarray(r2s), fmt="%.6f"); print(f"---> saved data: {f_r2}")
 
-######### Model Prediction #########
-# Initialize the model architecture
-model = CustomModel().to(device)
-
-# Load the trained model
-model.load_state_dict(torch.load('./outputs/Model.pth'))
-
-# Set the model to evaluation mode
-model.eval()
-with torch.no_grad():
-    torch_YieldStress_prediction = model(LSR_tensor, Temp_tensor, StrainRate_tensor, GrainSize_tensor)
-
-YieldStress_prediction_np = torch_YieldStress_prediction.cpu().numpy()
-
-######### Data preparation for MPEAs #########
-Ncount = [1, 2, 8, 7, 6, 9, 17]
-
-YieldStress_exp_list = [None] * len(Ncount)
-YieldStress_prediction_list = [None] * len(Ncount)
-
-index_start = 0
-
-for i in range(len(Ncount)):
-    print(f'i = {i}')
-    count = Ncount[i]
-    print("count:", count)
-
-    index_end = index_start + count
-
-    YieldStress_exp_list[i] = YieldStress_exp_np[index_start:index_end]
-    YieldStress_prediction_list[i] = YieldStress_prediction_np[index_start:index_end]
-
-    index_start = index_end
-
-################################################# Plot settings #######################################################
-x_values = [0, 500, 1000, 1500, 2000, 2500, 3000]
-y_values = [0, 500, 1000, 1500, 2000, 2500, 3000]
-
-colors = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']
-markers = ['o', '*', '^', 'v', '<', '>', 'D']
-labels = ['NbTaTi', 'HfNbTa', 'NbTiZr', 'HfNbTi', 'HfTaTi', 'HfNbTaTi', 'HfNbTaTiZr']
-
-################################################# Plot configuration performance ########################################
-plt.figure(figsize=(10, 10))
-
-plt.rcParams['font.family'] = 'Times New Roman'
-plt.rcParams['font.size'] = 28
-plt.rcParams['mathtext.fontset'] = 'stix'
-
-r2_configurations = [None] * len(Ncount)
-
-for i in range(len(Ncount)):
-    # Calculate R-squared
-    r2 = r2_score(YieldStress_exp_list[i], YieldStress_prediction_list[i])
-    r2_configurations[i] = r2
-
-    plt.scatter(YieldStress_exp_list[i], YieldStress_prediction_list[i], color=colors[i], marker=markers[i], label=labels[i], s=50)
-
-plt.plot(x_values, y_values, color='black', linestyle='--', linewidth=2.5)
-plt.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
-plt.xlabel('Experimental yield stress (MPa)')
-plt.ylabel('Predicted yield stress (MPa)')
-plt.xlim(0, 3000)
-plt.ylim(0, 3000)
-plt.xticks([0, 500, 1000, 1500, 2000, 2500, 3000])
-plt.yticks([0, 500, 1000, 1500, 2000, 2500, 3000])
-plt.gca().xaxis.set_minor_locator(MultipleLocator(100))
-plt.gca().yaxis.set_minor_locator(MultipleLocator(100))
-plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
-
-ax = plt.gca()
-for spine in ax.spines.values():
-    spine.set_linewidth(2)  # Adjust this value for frame line thickness
-
-plt.savefig('./figures/Comparison_yield_stress.png', bbox_inches='tight')
-plt.savefig('./figures/Comparison_yield_stress.pdf', bbox_inches='tight')
+    def plot_loss(self):
+        if len(self.loss_hist) == 0:
+            loss_file = os.path.join(self.args.out_dir, "loss.txt")
+            if os.path.isfile(loss_file):
+                self.loss_hist = np.loadtxt(loss_file).tolist()
+        if len(self.loss_hist) == 0: return
+        plt.figure(figsize=(7.5,5))
+        plt.rcParams['font.family'] = 'Times New Roman'; plt.rcParams['font.size'] = 22; plt.rcParams['mathtext.fontset'] = 'stix'
+        plt.semilogy(self.loss_hist, color='darkblue', label='training', linewidth=2.5)
+        plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.tick_params(axis='both', which='both', direction='in'); plt.legend(loc="upper right", frameon=False)
+        f = os.path.join(self.args.fig_dir, "loss.png")
+        plt.savefig(f, bbox_inches='tight'); print(f"---> saved figure: {f}")
 
 
-# Save r2 scores to a file
-with open('./outputs/r2_MPEAs.txt', 'w') as f:
-    for value in r2_configurations:
-        f.write(f"{value}\n")
+def parse_args():
+    p = argparse.ArgumentParser(description="Fit CustomModel to strength data and plot results.")
+    p.add_argument("--data_dir", default="data"); p.add_argument("--out_dir", default="outputs"); p.add_argument("--fig_dir", default="figures")
+    p.add_argument("--lr", type=float, default=1e-3); p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--optimizer", choices=["SGD","Adam"], default="Adam")
+    p.add_argument("--seed", type=int, default=21); p.add_argument("--log_int", type=int, default=100)
+    p.add_argument("--cuda", action="store_true"); p.add_argument("--cuda_idx", type=int, default=0)
+    return p.parse_args()
 
-################################################# Plot loss values #######################################################
-txtfilename = './outputs/loss.txt'
-train_loss = np.loadtxt(txtfilename)
 
-plt.figure(figsize=(10, 10))
-
-plt.rcParams['font.family'] = 'Times New Roman'
-plt.rcParams['font.size'] = 28
-plt.rcParams['mathtext.fontset'] = 'stix'
-
-plt.semilogy(train_loss, color=colors[0], label='training', linestyle='-', linewidth=2.5)
-plt.tick_params(axis='both', which='both', direction='in')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.legend(loc="upper right", frameon=False)
-plt.savefig('./figures/loss.png', bbox_inches='tight')
+if __name__ == "__main__":
+    args = parse_args()
+    trainer = StrengthTrainer(args)
+    if not trainer.load_model_if_exists():
+        trainer.train()
+        trainer.save_artifacts()
+    y_pred = trainer.predict()
+    trainer.plot_predictions(y_pred)
+    trainer.plot_loss()
