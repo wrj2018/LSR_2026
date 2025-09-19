@@ -58,6 +58,7 @@ class StrengthTrainer:
             loss.backward(); self.optimizer.step()
             self.loss_hist.append(float(loss.item()))
             if (ep+1) % self.args.log_int == 0 or ep == 0:
+                tqdm.write(f"Epoch [{ep+1}/{self.args.epochs}], deltaH: {self.model.param_deltaH.detach().cpu().numpy().round(4)}, KHP: {self.model.param_KHP.detach().cpu().numpy().round(2)}, Loss: {loss.item():.6f}")
                 pbar.set_postfix(loss=f"{loss.item():.6f}")
         self._save_losses()
 

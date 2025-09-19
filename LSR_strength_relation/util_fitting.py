@@ -150,12 +150,13 @@ class CustomModel(nn.Module):
     @property
     def param_deltaH(self):
         # Unit: eV (typical BCC range 0.3–3 eV). Keep (0.1, 5.0).
-        return 0.1 + 4.9 * torch.sigmoid(self._raw_param_deltaH)
+        return 0.3 + 2.7 * torch.sigmoid(self._raw_param_deltaH)
 
     @property
     def param_KHP(self):
         # Unit: MPa·µm^{-1/2}. Positive via exp.
-        return torch.exp(self._raw_param_KHP)
+        # return torch.exp(self._raw_param_KHP)
+        return 200 + 600*torch.sigmoid(self._raw_param_KHP)
 
     def _build_context(self, Temp_input, Srate_input, GrainSize_input):
         """
@@ -185,12 +186,12 @@ class CustomModel(nn.Module):
         dev = self.param_deltaH.device
         idx = torch.repeat_interleave(torch.arange(7, device=dev), torch.tensor([1, 2, 8, 7, 6, 9, 17], device=dev))
         # Expecting batch size B = 50 with the above composition layout
-        array_deltaH = self.param_deltaH[idx]   # (B,6)
-        array_KHP = self.param_KHP[idx]         # (B,)
+        self.array_deltaH = self.param_deltaH[idx]   # (B,6)
+        self.array_KHP = self.param_KHP[idx]         # (B,)
 
         # ---- physics head ----
         out_per_sys = f1(LSR_mixed, Temp_input.to(device=device, dtype=_DTYPE),
-                         Srate_input.to(device=device, dtype=_DTYPE), array_deltaH)
+                         Srate_input.to(device=device, dtype=_DTYPE), self.array_deltaH)
         summed = f2(out_per_sys)  # (B,)
-        sigma_y = f3(summed, array_KHP, GrainSize_input.to(device=device, dtype=_DTYPE))
+        sigma_y = f3(summed, self.array_KHP, GrainSize_input.to(device=device, dtype=_DTYPE))
         return sigma_y
