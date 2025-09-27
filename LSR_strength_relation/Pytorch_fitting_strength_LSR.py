@@ -8,7 +8,7 @@ from tqdm import tqdm
 from sklearn.metrics import r2_score
 from matplotlib.ticker import MultipleLocator
 import util_fitting
-
+torch.manual_seed(0); np.random.seed(0)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class StrengthTrainer:
@@ -148,11 +148,9 @@ class StrengthTrainer:
         for i in range(len(Ncount)):
             r2s.append(r2_score(ys_exp_chunks[i], ys_pred_chunks[i]))
             plt.scatter(ys_exp_chunks[i], ys_pred_chunks[i],
-                        color=colors[i], marker=markers[i], label=labels[i], s=45)
-
-        lim = [0, 3000]
+                        color=colors[i], marker=markers[i], label=labels[i], s=65)
+        lim = [0, 1600]
         plt.plot(lim, lim, 'k--', linewidth=2)
-
         ax = plt.gca()
         ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
         ax.xaxis.set_minor_locator(MultipleLocator(100))
@@ -164,8 +162,8 @@ class StrengthTrainer:
         for s in ax.spines.values(): s.set_linewidth(2)
 
         # ---- annotate metrics on top of the plot ----
-        txt = f"Overall R$^2$ = {r2_all:.3f}\nMAPE = {mape_all:.2f}%"
-        ax.text(0.03, 0.97, txt, transform=ax.transAxes, va='top', ha='left',
+        txt = f"R$^2$ = {r2_all:.3f}\nMAPE = {mape_all:.2f}%"
+        ax.text(0.1, 0.9, txt, transform=ax.transAxes, va='top', ha='left',
                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.85))
 
         fpng = os.path.join(self.args.fig_dir, "Comparison_yield_stress.png")
@@ -184,10 +182,81 @@ class StrengthTrainer:
         if len(self.loss_hist) == 0: return
         plt.figure(figsize=(7.5,5))
         plt.rcParams['font.family'] = 'Times New Roman'; plt.rcParams['font.size'] = 22; plt.rcParams['mathtext.fontset'] = 'stix'
-        plt.semilogy(self.loss_hist, color='darkblue', label='training', linewidth=2.5)
+        plt.semilogy(self.loss_hist, color='darkblue', label='Training', linewidth=2.5)
         plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.tick_params(axis='both', which='both', direction='in'); plt.legend(loc="upper right", frameon=False)
         f = os.path.join(self.args.fig_dir, "loss.png")
         plt.savefig(f, bbox_inches='tight'); print(f"---> saved figure: {f}")
+
+    def plot_aij_components(self):
+        """Visualize fitted a_ij as (1) mean 6x6 heatmap and (2) 21-comp mean±std bar chart."""
+        self.model.eval()
+        with torch.no_grad():
+            # Build context and evaluate a_ij(z) for all samples
+            z = self.model._build_context(self.TP, self.SR, self.GS)      # (N,3)
+            A = self.model.subModel1.a_layer(z)                           # (N,6,6)
+            # Ensure exact symmetry (model should output symmetric, but make it explicit)
+            A = 0.5 * (A + A.transpose(-1, -2))
+            A_np = A.detach().cpu().numpy()                                # (N,6,6)
+
+        # ---- Figure 1: mean heatmap of a_ij ----
+        A_mean = A_np.mean(axis=0)                                         # (6,6)
+        plt.figure(figsize=(6.5, 5.6))
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 20
+        plt.rcParams['mathtext.fontset'] = 'stix'
+
+        v = np.max(np.abs(A_mean))
+        im = plt.imshow(A_mean, origin='upper', cmap='coolwarm', vmin=-v, vmax=v)
+        cb = plt.colorbar(im, fraction=0.046, pad=0.04)
+        cb.ax.tick_params(labelsize=16)
+
+        slip_labels = [r'$\gamma^{110}$', r'$\tau^{110}$', r'$\gamma^{112}$',
+                       r'$\tau^{112}$', r'$\gamma^{123}$', r'$\tau^{123}$']
+        plt.xticks(range(6), slip_labels, rotation=45)
+        plt.yticks(range(6), slip_labels)
+        ax = plt.gca()
+        for s in ax.spines.values(): s.set_linewidth(2)
+        ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+
+        # annotate values
+        for i in range(6):
+            for j in range(6):
+                plt.text(j, i, f"{A_mean[i,j]:.2f}", ha='center', va='center', fontsize=15, color='black')
+
+        plt.title(r"Mean $a_{ij}$ over dataset")
+        fpng = os.path.join(self.args.fig_dir, "aij_mean_heatmap.png")
+        fpdf = os.path.join(self.args.fig_dir, "aij_mean_heatmap.pdf")
+        plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+
+        # ---- Figure 2: upper-triangular components (mean ± std) ----
+        iu = np.triu_indices(6) # (21,)
+        A_tri = A_np[:, iu[0], iu[1]] # (N,21)
+        mu = A_tri.mean(axis=0)
+        sd = A_tri.std(axis=0)
+
+        # human-friendly labels like "e110–e110", "e110–s110", ...
+        pair_labels = [rf"{slip_labels[i]}$\leftrightarrow${slip_labels[j]}" for i, j in zip(iu[0], iu[1])]
+
+        plt.figure(figsize=(12, 5))
+        # plt.rcParams['font.family'] = 'Times New Roman'
+        # plt.rcParams['font.size'] = 16
+        # plt.rcParams['mathtext.fontset'] = 'stix'
+
+        x = np.arange(len(mu))
+        plt.bar(x, mu, yerr=sd, capsize=3, color='skyblue', edgecolor='black', error_kw={'elinewidth':1.5})
+        ax = plt.gca(); ax.set_xticks(x)
+        # show every label but keep it readable by tilting; feel free to thin ticks if crowded
+        ax.set_xticklabels(pair_labels, rotation=45, ha='right')
+        ax.set_ylabel(r"$a_{ij}$ (mean $\pm$ std)")
+        ax.set_title(r"Upper-triangular components of $a_{ij}$")
+        ax.tick_params(axis='both', which='both', direction='in', top=True, right=True)
+        for s in ax.spines.values(): s.set_linewidth(2)
+
+        fpng = os.path.join(self.args.fig_dir, "aij_upper_tri_bar.png")
+        fpdf = os.path.join(self.args.fig_dir, "aij_upper_tri_bar.pdf")
+        plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
 
 
 def parse_args():
@@ -209,3 +278,4 @@ if __name__ == "__main__":
     y_pred = trainer.predict()
     trainer.plot_predictions(y_pred)
     trainer.plot_loss()
+    trainer.plot_aij_components() 

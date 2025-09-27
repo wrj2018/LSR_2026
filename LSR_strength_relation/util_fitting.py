@@ -164,7 +164,7 @@ class CustomModel(nn.Module):
         Shapes: each (B,) -> z: (B,3)
         """
         zT = Temp_input.to(device=device, dtype=_DTYPE)
-        zSR = torch.log(Srate_input.clamp_min(1e-30)).to(device=device, dtype=_DTYPE)
+        zSR = (Srate_input.clamp_min(1e-30)).to(device=device, dtype=_DTYPE) # torch.log
         zD = GrainSize_input.to(device=device, dtype=_DTYPE)
         z = torch.stack([zT, zSR, zD], dim=1)  # (B,3)
         return z
