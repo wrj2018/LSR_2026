@@ -258,6 +258,45 @@ class StrengthTrainer:
         plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
         plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
 
+    def print_fitted_params(self):
+        """Print fitted K_HP and ΔH0 for quick visual check; also write LaTeX snippets."""
+        self.model.eval()
+        with torch.no_grad():
+            K = self.model.param_KHP.detach().cpu().numpy()          # (7,)
+            DH = self.model.param_deltaH.detach().cpu().numpy()      # (7,6)
+
+        comp_labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        slip_order  = [r'$\gamma^{110}$', r'$\tau^{110}$', r'$\gamma^{112}$',
+                       r'$\tau^{112}$', r'$\gamma^{123}$', r'$\tau^{123}$']
+
+        # ---- Console print: K_HP ----
+        print("\n=== Fitted K_HP (MPa·μm^{-1/2}) ===")
+        for name, val in zip(comp_labels, K):
+            print(f"{name:>12s}: {val:.4f}")
+
+        # ---- Console print: ΔH0 ----
+        print("\n=== Fitted ΔH0 (eV) per composition × slip system ===")
+        print("cols order:", " | ".join(slip_order))
+        for name, row in zip(comp_labels, DH):
+            print(f"{name:>12s}: " + "  ".join(f"{v:.4f}" for v in row))
+
+        # ---- Write quick LaTeX snippets you can paste ----
+        os.makedirs(self.args.out_dir, exist_ok=True)
+        # Table A1 one-line row for K_HP
+        f1 = os.path.join(self.args.out_dir, "KHP_table_row.tex")
+        with open(f1, "w") as f:
+            f.write("% Paste into Table A1 body\n")
+            f.write("$K_\\mathrm{HP}$ & " + " & ".join(f"{v:.2f}" for v in K) + " \\\\ \\hline\n")
+        print(f"---> wrote LaTeX row for K_HP: {f1}")
+
+        # Table A2 body for ΔH0
+        f2 = os.path.join(self.args.out_dir, "DeltaH_table_body.tex")
+        with open(f2, "w") as f:
+            f.write("% Paste rows into Table A2 body\n")
+            for name, row in zip(comp_labels, DH):
+                f.write(f"{name} & " + " & ".join(f"{v:.4f}" for v in row) + " \\\\ \\hline\n")
+        print(f"---> wrote LaTeX rows for ΔH0: {f2}")
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Fit CustomModel to strength data and plot results.")
@@ -278,4 +317,5 @@ if __name__ == "__main__":
     y_pred = trainer.predict()
     trainer.plot_predictions(y_pred)
     trainer.plot_loss()
-    trainer.plot_aij_components() 
+    trainer.plot_aij_components()
+    trainer.print_fitted_params()
