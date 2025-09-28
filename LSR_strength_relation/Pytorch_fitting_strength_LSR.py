@@ -11,6 +11,9 @@ import util_fitting
 torch.manual_seed(0); np.random.seed(0)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+def _latex_pm(mean, std, fmt="{:.4f}"):
+    return f"{fmt.format(mean)} $\\pm$ {fmt.format(std)}"
+
 class StrengthTrainer:
     def __init__(self, args):
         self.args = args
@@ -188,37 +191,33 @@ class StrengthTrainer:
         plt.savefig(f, bbox_inches='tight'); print(f"---> saved figure: {f}")
 
     def plot_aij_components(self):
-        """Visualize fitted a_ij as (1) mean 6x6 heatmap and (2) 21-comp mean±std bar chart."""
+        """Visualize fitted a_ij as (1) mean 6x6 heatmap and (2) 21-comp mean±std bar chart,
+        and also WRITE LaTeX/CSV tables for the 21 upper-tri components (mean ± std)."""
         self.model.eval()
         with torch.no_grad():
-            # Build context and evaluate a_ij(z) for all samples
-            z = self.model._build_context(self.TP, self.SR, self.GS)      # (N,3)
-            A = self.model.subModel1.a_layer(z)                           # (N,6,6)
-            # Ensure exact symmetry (model should output symmetric, but make it explicit)
+            z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
+            A = self.model.subModel1.a_layer(z)                       # (N,6,6)
             A = 0.5 * (A + A.transpose(-1, -2))
-            A_np = A.detach().cpu().numpy()                                # (N,6,6)
-
+            A_np = A.detach().cpu().numpy()                           # (N,6,6)
         # ---- Figure 1: mean heatmap of a_ij ----
-        A_mean = A_np.mean(axis=0)                                         # (6,6)
+        A_mean = A_np.mean(axis=0)                                    # (6,6)
         plt.figure(figsize=(6.5, 5.6))
         plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams['font.size'] = 20
         plt.rcParams['mathtext.fontset'] = 'stix'
-
         v = np.max(np.abs(A_mean))
         im = plt.imshow(A_mean, origin='upper', cmap='coolwarm', vmin=-v, vmax=v)
         cb = plt.colorbar(im, fraction=0.046, pad=0.04)
         cb.ax.tick_params(labelsize=16)
 
         slip_labels = [r'$\gamma^{110}$', r'$\tau^{110}$', r'$\gamma^{112}$',
-                       r'$\tau^{112}$', r'$\gamma^{123}$', r'$\tau^{123}$']
+                    r'$\tau^{112}$', r'$\gamma^{123}$', r'$\tau^{123}$']
         plt.xticks(range(6), slip_labels, rotation=45)
         plt.yticks(range(6), slip_labels)
         ax = plt.gca()
         for s in ax.spines.values(): s.set_linewidth(2)
         ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
 
-        # annotate values
         for i in range(6):
             for j in range(6):
                 plt.text(j, i, f"{A_mean[i,j]:.2f}", ha='center', va='center', fontsize=15, color='black')
@@ -229,24 +228,18 @@ class StrengthTrainer:
         plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
         plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
 
-        # ---- Figure 2: upper-triangular components (mean ± std) ----
-        iu = np.triu_indices(6) # (21,)
-        A_tri = A_np[:, iu[0], iu[1]] # (N,21)
-        mu = A_tri.mean(axis=0)
-        sd = A_tri.std(axis=0)
+        # ---- Figure 2 + tables: upper-tri (mean ± std)
+        iu = np.triu_indices(6)                # (21,)
+        A_tri = A_np[:, iu[0], iu[1]]          # (N,21)
+        mu = A_tri.mean(axis=0)                # (21,)
+        sd = A_tri.std(axis=0)                 # (21,)
 
-        # human-friendly labels like "e110–e110", "e110–s110", ...
         pair_labels = [rf"{slip_labels[i]}$\leftrightarrow${slip_labels[j]}" for i, j in zip(iu[0], iu[1])]
 
         plt.figure(figsize=(12, 5))
-        # plt.rcParams['font.family'] = 'Times New Roman'
-        # plt.rcParams['font.size'] = 16
-        # plt.rcParams['mathtext.fontset'] = 'stix'
-
         x = np.arange(len(mu))
         plt.bar(x, mu, yerr=sd, capsize=3, color='skyblue', edgecolor='black', error_kw={'elinewidth':1.5})
         ax = plt.gca(); ax.set_xticks(x)
-        # show every label but keep it readable by tilting; feel free to thin ticks if crowded
         ax.set_xticklabels(pair_labels, rotation=45, ha='right')
         ax.set_ylabel(r"$a_{ij}$ (mean $\pm$ std)")
         ax.set_title(r"Upper-triangular components of $a_{ij}$")
@@ -257,6 +250,82 @@ class StrengthTrainer:
         fpdf = os.path.join(self.args.fig_dir, "aij_upper_tri_bar.pdf")
         plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
         plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+
+        # ---- Write CSV + LaTeX table for mean ± std of the 21 comps
+        stats_csv = os.path.join(self.args.out_dir, "aij_upper_tri_stats.csv")
+        with open(stats_csv, "w") as f:
+            f.write("pair,mean,std\n")
+            for lbl, m, s in zip(pair_labels, mu, sd):
+                f.write(f"{lbl},{m:.6f},{s:.6f}\n")
+        print(f"---> wrote A_ij stats CSV: {stats_csv}")
+        stats_tex = os.path.join(self.args.out_dir, "aij_upper_tri_table.tex")
+        with open(stats_tex, "w") as f:
+            f.write("% Mean ± std for upper-triangular a_ij components (21 entries)\n")
+            f.write("\\begin{tabular}{lcc}\\hline\nPair & Mean & Std \\\\ \\hline\n")
+            for lbl, m, s in zip(pair_labels, mu, sd):
+                f.write(f"{lbl} & {m:.4f} & {s:.4f} \\\\ \n")
+            f.write("\\hline\\end{tabular}\n")
+        print(f"---> wrote A_ij LaTeX table: {stats_tex}")
+
+    def print_aij_mean_std_table(self):
+        """Print and export LaTeX for mean (std) of the fitted 6x6 a_ij over the dataset."""
+        self.model.eval()
+        with torch.no_grad():
+            # Build context and evaluate a_ij(z) for all samples
+            z = self.model._build_context(self.TP, self.SR, self.GS)   # (N,3)
+            A = self.model.subModel1.a_layer(z)                        # (N,6,6)
+            A = 0.5 * (A + A.transpose(-1, -2))                        # enforce symmetry
+            A_np = A.detach().cpu().numpy()                            # (N,6,6)
+
+        mu = A_np.mean(axis=0)  # (6,6)
+        sd = A_np.std(axis=0)   # (6,6)
+
+        # ---------- Console pretty print ----------
+        def cell(m, s): return f"{m:.2f} ({s:.2f})"
+        hdr = ["    a_ij  "] + [f" j={j+1}" for j in range(6)]
+        print("\n=== Fitted a_ij mean (std) over dataset ===")
+        print(" | ".join(hdr))
+        print("-" * (12 + 9*6))
+        for i in range(6):
+            row_vals = [cell(mu[i, j], sd[i, j]) for j in range(6)]
+            print(f" i={i+1}  | " + " | ".join(f"{v:>9s}" for v in row_vals))
+
+        # ---------- Also save CSVs for mean and std (optional but handy) ----------
+        os.makedirs(self.args.out_dir, exist_ok=True)
+        mean_csv = os.path.join(self.args.out_dir, "aij_mean.csv")
+        std_csv  = os.path.join(self.args.out_dir, "aij_std.csv")
+        np.savetxt(mean_csv, mu, delimiter=",", fmt="%.6f")
+        np.savetxt(std_csv,  sd, delimiter=",", fmt="%.6f")
+        print(f"---> saved data: {mean_csv}")
+        print(f"---> saved data: {std_csv}")
+
+        # ---------- LaTeX table ----------
+        # Use simple i/j indices in headers; swap with your slip labels if preferred.
+        latex_lines = []
+        latex_lines += [
+            r"\begin{table*}[htp]",
+            r"\caption{Mean (std) of fitted interaction matrix $a_{ij}(z)$ over all samples.}",
+            r"\label{tbl:aij_mean_std}",
+            r"\centering",
+            r"\setlength{\tabcolsep}{6pt}",
+            r"\renewcommand{\arraystretch}{1.15}",
+            r"\begin{tabular}{ccccccc}",
+            r"\hline",
+            r"$i\backslash j$ & 1 & 2 & 3 & 4 & 5 & 6 \\ \hline",
+        ]
+        for i in range(6):
+            row_strs = [f"{mu[i,j]:.2f} ({sd[i,j]:.2f})" for j in range(6)]
+            latex_lines.append(f"{i+1} & " + " & ".join(row_strs) + r" \\")
+        latex_lines += [
+            r"\hline",
+            r"\end{tabular}",
+            r"\end{table*}",
+            ""
+        ]
+        tex_path = os.path.join(self.args.out_dir, "aij_mean_std_table.tex")
+        with open(tex_path, "w") as f:
+            f.write("\n".join(latex_lines))
+        print(f"---> wrote LaTeX table: {tex_path}")
 
     def print_fitted_params(self):
         """Print fitted K_HP and ΔH0 for quick visual check; also write LaTeX snippets."""
@@ -318,4 +387,5 @@ if __name__ == "__main__":
     trainer.plot_predictions(y_pred)
     trainer.plot_loss()
     trainer.plot_aij_components()
+    trainer.print_aij_mean_std_table()
     trainer.print_fitted_params()

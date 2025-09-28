@@ -110,7 +110,7 @@ class SymmetricRFFKernelLayer(nn.Module):
         """
         phi = self._features(z)                  # (B,D)
         y = self.lin(phi)                        # (B,21)
-        A = unpack_sym_6x6(y)                    # (B,6,6)
+        A = unpack_sym_6x6(y) # (B,6,6)
         return A
 
 # ----------------------- SLP: apply a_ij(z) to LSR -----------------------
