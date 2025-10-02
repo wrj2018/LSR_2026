@@ -1,5 +1,4 @@
-import torch, math, torch.nn as nn
-import numpy as np, random
+import torch, torch.nn as nn, math
 # ----------------------- device / dtype -----------------------
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 _DTYPE = torch.float64
@@ -106,11 +105,12 @@ class SymmetricRFFKernelLayer(nn.Module):
 
     def forward(self, z):
         """
-        z: (B,p) context -> A: (B,6,6) symmetric
+        z: (B,p) context -> A: (B,6,6) symmetric and strictly positive
         """
         phi = self._features(z)                  # (B,D)
         y = self.lin(phi)                        # (B,21)
-        A = unpack_sym_6x6(y) # (B,6,6)
+        y_pos = torch.nn.functional.softplus(y)  # strictly positive
+        A = unpack_sym_6x6(y_pos)                # (B,6,6)
         return A
 
 # ----------------------- SLP: apply a_ij(z) to LSR -----------------------
@@ -149,14 +149,16 @@ class CustomModel(nn.Module):
 
     @property
     def param_deltaH(self):
-        # Unit: eV (typical BCC range 0.3–3 eV). Keep (0.1, 5.0).
-        return 0.3 + 2.7 * torch.sigmoid(self._raw_param_deltaH)
+        # Unit: eV (typical BCC range 1–3 eV). Keep (1.0, 3.0).
+        # Previous: 0.3 + 2.7 * torch.sigmoid(self._raw_param_deltaH)
+        return 1.5 + 1.5 * torch.sigmoid(self._raw_param_deltaH) # range (1.5, 3.0)
 
     @property
     def param_KHP(self):
         # Unit: MPa·µm^{-1/2}. Positive via exp.
         # return torch.exp(self._raw_param_KHP)
-        return 200 + 600*torch.sigmoid(self._raw_param_KHP)
+        # return 200 + 600*torch.sigmoid(self._raw_param_KHP)
+        return 0 + 300*torch.sigmoid(self._raw_param_KHP)
 
     def _build_context(self, Temp_input, Srate_input, GrainSize_input):
         """
