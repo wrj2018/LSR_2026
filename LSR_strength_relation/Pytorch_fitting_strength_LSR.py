@@ -33,6 +33,12 @@ if __name__ == "__main__":
     y_pred = trainer.predict()
     trainer.plot_predictions(y_pred)
     trainer.plot_loss()
-    trainer.plot_aij_components()
+    # Plot a_ij per material and per sample instead of only averages
+    try:
+        # If running with util_training module naming
+        trainer.plot_aij_per_material()
+    except AttributeError:
+        # Fallback for older versions
+        trainer.plot_aij_components()
     trainer.print_aij_mean_std_table()
     trainer.print_fitted_params()

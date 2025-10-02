@@ -234,8 +234,8 @@ class StrengthTrainer:
         cb = plt.colorbar(im, fraction=0.046, pad=0.04)
         cb.ax.tick_params(labelsize=16)
 
-        slip_labels = [r'$\gamma^{110}$', r'$\tau^{110}$', r'$\gamma^{112}$',
-                    r'$\tau^{112}$', r'$\gamma^{123}$', r'$\tau^{123}$']
+        slip_labels = ['$\gamma^{110}$', '$\tau^{110}$', '$\gamma^{112}$',
+                       '$\tau^{112}$', '$\gamma^{123}$', '$\tau^{123}$']
         plt.xticks(range(6), slip_labels, rotation=45)
         plt.yticks(range(6), slip_labels)
         ax = plt.gca()
@@ -290,6 +290,54 @@ class StrengthTrainer:
                 f.write(f"{lbl} & {m:.4f} & {s:.4f} \\\\ \n")
             f.write("\\hline\\end{tabular}\n")
         print(f"---> wrote A_ij LaTeX table: {stats_tex}")
+
+    def plot_aij_per_material(self):
+        """For each material (composition), print and save heatmaps of a_ij for every sample."""
+        self.model.eval()
+        with torch.no_grad():
+            z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
+            A = self.model.subModel1.a_layer(z)                       # (N,6,6)
+            A = 0.5 * (A + A.transpose(-1, -2))
+            A_np = A.detach().cpu().numpy()                           # (N,6,6)
+
+        labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        counts = [1, 2, 8, 7, 6, 9, 17]
+        # slip_labels = ['$\gamma^{110}$', '$\tau^{110}$', '$\gamma^{112}$',
+        #                '$\tau^{112}$', '$\gamma^{123}$', '$\tau^{123}$']
+        slip_labels = ['1', '2', '3', '4', '5', '6']
+
+        start = 0
+        for name, cnt in zip(labels, counts):
+            end = start + cnt
+            mats = A_np[start:end]
+            for k, M in enumerate(mats, start=1):
+                print(f"\n=== a_ij for {name}, sample {k}/{cnt} ===")
+                for i in range(6):
+                    row = " ".join(f"{M[i,j]:.2f}" for j in range(6))
+                    print(row)
+                plt.figure(figsize=(6.5, 5.6))
+                plt.rcParams['font.family'] = 'Times New Roman'
+                plt.rcParams['font.size'] = 20
+                plt.rcParams['mathtext.fontset'] = 'stix'
+                v = np.max(np.abs(M))
+                im = plt.imshow(M, origin='upper', cmap='coolwarm', vmin=0, vmax=v)
+                cb = plt.colorbar(im, fraction=0.046, pad=0.04)
+                cb.ax.tick_params(labelsize=16)
+                plt.xticks(range(6), slip_labels, rotation=45)
+                plt.yticks(range(6), slip_labels)
+                ax = plt.gca()
+                for s in ax.spines.values(): s.set_linewidth(2)
+                ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+                for i in range(6):
+                    for j in range(6):
+                        plt.text(j, i, f"{M[i,j]:.2f}", ha='center', va='center', fontsize=15, color='black')
+                plt.title(rf"$a_{{ij}}$ — {name} (sample {k}/{cnt})")
+                fpng = os.path.join(self.args.fig_dir, f"aij_{name}_s{k}.png")
+                fpdf = os.path.join(self.args.fig_dir, f"aij_{name}_s{k}.pdf")
+                plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+                plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+                plt.close()
+            start = end
 
     def print_aij_mean_std_table(self):
         """Print and export LaTeX for mean (std) of the fitted 6x6 a_ij over the dataset."""
