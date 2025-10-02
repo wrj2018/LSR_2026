@@ -234,8 +234,9 @@ class StrengthTrainer:
         cb = plt.colorbar(im, fraction=0.046, pad=0.04)
         cb.ax.tick_params(labelsize=16)
 
-        slip_labels = ['$\gamma^{110}$', '$\tau^{110}$', '$\gamma^{112}$',
-                       '$\tau^{112}$', '$\gamma^{123}$', '$\tau^{123}$']
+        # slip_labels = ['$\gamma^{110}$', '$\tau^{110}$', '$\gamma^{112}$',
+        #                '$\tau^{112}$', '$\gamma^{123}$', '$\tau^{123}$']
+        slip_labels = ['1', '2', '3', '4', '5', '6']
         plt.xticks(range(6), slip_labels, rotation=45)
         plt.yticks(range(6), slip_labels)
         ax = plt.gca()
