@@ -105,12 +105,12 @@ class SymmetricRFFKernelLayer(nn.Module):
 
     def forward(self, z):
         """
-        z: (B,p) context -> A: (B,6,6) symmetric and strictly positive
+        z: (B,p) context -> A: (B,6,6) symmetric with entries in (0,1)
         """
         phi = self._features(z)                  # (B,D)
         y = self.lin(phi)                        # (B,21)
-        y_pos = torch.nn.functional.softplus(y)  # strictly positive
-        A = unpack_sym_6x6(y_pos)                # (B,6,6)
+        y_bounded = torch.sigmoid(y)             # strictly in (0,1)
+        A = unpack_sym_6x6(y_bounded)            # (B,6,6)
         return A
 
 # ----------------------- SLP: apply a_ij(z) to LSR -----------------------
@@ -158,7 +158,8 @@ class CustomModel(nn.Module):
         # Unit: MPa·µm^{-1/2}. Positive via exp.
         # return torch.exp(self._raw_param_KHP)
         # return 200 + 600*torch.sigmoid(self._raw_param_KHP)
-        return 0 + 300*torch.sigmoid(self._raw_param_KHP)
+        # return 0 + 300*torch.sigmoid(self._raw_param_KHP)
+        return 100 + 150*torch.sigmoid(self._raw_param_KHP)
 
     def _build_context(self, Temp_input, Srate_input, GrainSize_input):
         """
