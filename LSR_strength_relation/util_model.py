@@ -113,34 +113,101 @@ class SymmetricRFFKernelLayer(nn.Module):
         A = unpack_sym_6x6(y_bounded)            # (B,6,6)
         return A
 
+class VectorizedRFFKernelLayer(nn.Module):
+    """
+    Random Fourier Features approximation of an RBF kernel.
+    Given context z ∈ R^p, outputs a 6-element vector a(z).
+
+    a(z) is produced by a linear map from features φ(z) to the 6
+    vector components, bounded to (0,1) via sigmoid.
+    """
+    def __init__(self, in_features, n_features=512, ard=True):
+        super().__init__()
+        self.p = in_features
+        self.D = n_features
+        self.ard = ard
+        # Trainable lengthscales (log ℓ); ARD or shared
+        if ard: self.log_lengthscale = nn.Parameter(torch.zeros(self.p, dtype=_DTYPE))
+        else: self.log_lengthscale = nn.Parameter(torch.zeros(1, dtype=_DTYPE))
+        # Base Gaussian matrix W_base ~ N(0, 1); scaled by 1/ℓ to realize RBF frequencies
+        self.register_buffer("W_base", torch.randn(self.D, self.p, dtype=_DTYPE))
+        # Random phases b ~ Uniform(0, 2π)
+        self.register_buffer("b", 2 * math.pi * torch.rand(self.D, dtype=_DTYPE))
+        # Linear map to 6 outputs (for vector instead of matrix)
+        self.lin = nn.Linear(self.D, 6, bias=True, dtype=_DTYPE)
+
+    def _features(self, z):
+        """
+        z: (B,p) -> φ(z): (B,D)
+        φ(z) = sqrt(2/D) * cos(W z + b)
+        with W_d,: ~ N(0, diag(1/ℓ^2))
+        """
+        if self.ard:
+            inv_ell = torch.exp(-self.log_lengthscale)          # (p,)
+            W = self.W_base * inv_ell.unsqueeze(0)              # (D,p)
+        else:
+            inv_ell = torch.exp(-self.log_lengthscale)          # scalar
+            W = self.W_base * inv_ell
+        proj = z @ W.T + self.b                                 # (B,D)
+        phi = math.sqrt(2.0 / self.D) * torch.cos(proj)
+        return phi
+
+    def forward(self, z):
+        """
+        z: (B,p) context -> a: (B,6) vector with entries in (0,1)
+        """
+        phi = self._features(z)                  # (B,D)
+        y = self.lin(phi)                        # (B,6)
+        y_bounded = torch.sigmoid(y)             # strictly in (0,1)
+        return y_bounded
+
 # ----------------------- SLP: apply a_ij(z) to LSR -----------------------
 class SLP(nn.Module):
     """
     Replaces the constant symmetric 6x6 with a context-dependent symmetric matrix a(z)
     computed by an RFF Gaussian-kernel layer. By default, z = [T, ln(ε̇), d].
+    
+    Supports two model options:
+    - 'a_ij': uses SymmetricRFFKernelLayer to output 6x6 matrix, applies LSR @ A
+    - 'a_i': uses VectorizedRFFKernelLayer to output 6-element vector, applies element-wise multiplication
     """
-    def __init__(self, p_context=3, n_features=512, ard=True):
+    def __init__(self, p_context=3, n_features=512, ard=True, model_option='a_ij'):
         super(SLP, self).__init__()
-        self.a_layer = SymmetricRFFKernelLayer(in_features=p_context,
-                                               n_features=n_features,
-                                               ard=ard).to(device)
-
+        self.model_option = model_option
+        
+        if self.model_option == 'a_ij':
+            self.a_layer = SymmetricRFFKernelLayer(in_features=p_context,
+                                                n_features=n_features,
+                                                ard=ard).to(device)
+        elif self.model_option == 'a_i':
+            self.a_layer = VectorizedRFFKernelLayer(in_features=p_context,
+                                                  n_features=n_features,
+                                                  ard=ard).to(device)
+        else:
+            raise ValueError(f"model_option must be 'a_ij' or 'a_i', got {model_option}")
+    
     def forward(self, LSR_input, context_z):
         """
         LSR_input:  (B,6)
         context_z:  (B,p_context)
-        returns:    (B,6)  -> LSR' = LSR @ a(z)
+        returns:    (B,6)  -> LSR' = LSR @ a(z) for a_ij, or LSR * a(z) for a_i
         """
-        A = self.a_layer(context_z)                          # (B,6,6)
-        out = torch.einsum('bi,bij->bj', LSR_input, A)       # batch-right-multiply
+        if self.model_option == 'a_ij':
+            A = self.a_layer(context_z)                          # (B,6,6)
+            out = torch.einsum('bi,bij->bj', LSR_input, A)       # batch-right-multiply
+        elif self.model_option == 'a_i':
+            a = self.a_layer(context_z)                           # (B,6)
+            out = LSR_input * a                                   # element-wise multiplication
+        else:
+            raise ValueError(f"model_option must be 'a_ij' or 'a_i', got {self.model_option}")
         return out
 
 # ----------------------- Training model -----------------------
 class CustomModel(nn.Module):
-    def __init__(self, p_context=3, n_features=512, ard=True):
+    def __init__(self, p_context=3, n_features=512, ard=True, model_option='a_ij'):
         super(CustomModel, self).__init__()
-        # a_ij(z) mixer for LSR
-        self.subModel1 = SLP(p_context=p_context, n_features=n_features, ard=ard).to(device)
+        # a_ij(z) or a_i(z) mixer for LSR
+        self.subModel1 = SLP(p_context=p_context, n_features=n_features, ard=ard, model_option=model_option).to(device)
 
         # deltaH for 7 alloys × 6 systems (raw params -> constrained)
         self._raw_param_deltaH = nn.Parameter(torch.randn(7, 6, dtype=_DTYPE))

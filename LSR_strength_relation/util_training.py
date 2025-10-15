@@ -23,7 +23,7 @@ class StrengthTrainer:
         os.makedirs(args.out_dir, exist_ok=True); os.makedirs(args.fig_dir, exist_ok=True)
         self.model_path = os.path.join(args.out_dir, "Model.pth")
         self.best_model_path = os.path.join(args.out_dir, "Model_best.pth")
-        self.model = um.CustomModel().to(self.device).double()
+        self.model = um.CustomModel(model_option=args.model_option).to(self.device).double()
         self.criterion = nn.MSELoss()
         self.optimizer = {"SGD": optim.SGD, "Adam": optim.Adam}[args.optimizer](self.model.parameters(), lr=args.lr)
         self.loss_hist = []
@@ -84,26 +84,44 @@ class StrengthTrainer:
         print(f"---> saved data: {f}")
 
     def save_artifacts(self):
-        # ----- per-sample a_ij(z) -----
         self.model.eval()
         with torch.no_grad():
             # Build the same context z used inside the model
             z = self.model._build_context(self.TP, self.SR, self.GS)              # (N,3)
-            A = self.model.subModel1.a_layer(z).detach().cpu().numpy()            # (N,6,6)
-        # Save full matrices and upper-tri vectors
-        fA = os.path.join(self.args.out_dir, "aij_matrices.npy")
-        np.save(fA, A); print(f"---> saved data: {fA}")
-        iu = np.triu_indices(6)
-        A_tri = A[:, iu[0], iu[1]]                                                # (N,21)
-        fAT = os.path.join(self.args.out_dir, "aij_upper_tri.npy")
-        np.save(fAT, A_tri); print(f"---> saved data: {fAT}")
-        # Also save a quick-look mean a_ij over the dataset
-        A_mean = A.mean(axis=0)                                                   # (6,6)
-        fMean = os.path.join(self.args.out_dir, "aij_mean.csv")
-        np.savetxt(fMean, A_mean, delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
-        # ----- RFF layer parameters (to reproduce a_ij(z)) -----
+            a_output = self.model.subModel1.a_layer(z).detach().cpu().numpy()     # (N,6) or (N,6,6)
+        
+        # Handle different model types
+        if self.args.model_option == 'a_ij':
+            # ----- per-sample a_ij(z) -----
+            A = a_output                                                           # (N,6,6)
+            # Save full matrices and upper-tri vectors
+            fA = os.path.join(self.args.out_dir, "aij_matrices.npy")
+            np.save(fA, A); print(f"---> saved data: {fA}")
+            iu = np.triu_indices(6)
+            A_tri = A[:, iu[0], iu[1]]                                            # (N,21)
+            fAT = os.path.join(self.args.out_dir, "aij_upper_tri.npy")
+            np.save(fAT, A_tri); print(f"---> saved data: {fAT}")
+            # Also save a quick-look mean a_ij over the dataset
+            A_mean = A.mean(axis=0)                                               # (6,6)
+            fMean = os.path.join(self.args.out_dir, "aij_mean.csv")
+            np.savetxt(fMean, A_mean, delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
+        elif self.args.model_option == 'a_i':
+            # ----- per-sample a_i(z) -----
+            a = a_output                                                           # (N,6)
+            # Save vector outputs
+            fa = os.path.join(self.args.out_dir, "ai_vectors.npy")
+            np.save(fa, a); print(f"---> saved data: {fa}")
+            # Also save a quick-look mean a_i over the dataset
+            a_mean = a.mean(axis=0)                                               # (6,)
+            fMean = os.path.join(self.args.out_dir, "ai_mean.csv")
+            np.savetxt(fMean, a_mean, delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
+        
+        # ----- RFF layer parameters (to reproduce a_ij(z) or a_i(z)) -----
         al = self.model.subModel1.a_layer
-        rff_params_path = os.path.join(self.args.out_dir, "aij_rff_params.npz")
+        if self.args.model_option == 'a_ij':
+            rff_params_path = os.path.join(self.args.out_dir, "aij_rff_params.npz")
+        else:
+            rff_params_path = os.path.join(self.args.out_dir, "ai_rff_params.npz")
         np.savez(rff_params_path,
                  log_lengthscale=al.log_lengthscale.detach().cpu().numpy(),
                  W_base=al.W_base.detach().cpu().numpy(),
@@ -216,13 +234,23 @@ class StrengthTrainer:
 
     def plot_aij_components(self):
         """Visualize fitted a_ij as (1) mean 6x6 heatmap and (2) 21-comp mean±std bar chart,
-        and also WRITE LaTeX/CSV tables for the 21 upper-tri components (mean ± std)."""
+        and also WRITE LaTeX/CSV tables for the 21 upper-tri components (mean ± std).
+        For a_i model, visualize as 6-element vector bar chart."""
         self.model.eval()
         with torch.no_grad():
             z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
-            A = self.model.subModel1.a_layer(z)                       # (N,6,6)
-            A = 0.5 * (A + A.transpose(-1, -2))
+            a_output = self.model.subModel1.a_layer(z)               # (N,6) or (N,6,6)
+            
+        if self.args.model_option == 'a_ij':
+            A = 0.5 * (a_output + a_output.transpose(-1, -2))
             A_np = A.detach().cpu().numpy()                           # (N,6,6)
+            self._plot_aij_matrix_components(A_np)
+        elif self.args.model_option == 'a_i':
+            a_np = a_output.detach().cpu().numpy()                    # (N,6)
+            self._plot_ai_vector_components(a_np)
+    
+    def _plot_aij_matrix_components(self, A_np):
+        """Plot components for a_ij matrix model."""
         # ---- Figure 1: mean heatmap of a_ij ----
         A_mean = A_np.mean(axis=0)                                    # (6,6)
         plt.figure(figsize=(6.5, 5.6))
@@ -292,15 +320,63 @@ class StrengthTrainer:
             f.write("\\hline\\end{tabular}\n")
         print(f"---> wrote A_ij LaTeX table: {stats_tex}")
 
+    def _plot_ai_vector_components(self, a_np):
+        """Plot components for a_i vector model."""
+        # ---- Figure: a_i vector components (mean ± std)
+        mu = a_np.mean(axis=0)                  # (6,)
+        sd = a_np.std(axis=0)                   # (6,)
+        
+        slip_labels = ['1', '2', '3', '4', '5', '6']
+        
+        plt.figure(figsize=(8, 5))
+        x = np.arange(len(mu))
+        plt.bar(x, mu, yerr=sd, capsize=3, color='lightgreen', edgecolor='black', error_kw={'elinewidth':1.5})
+        ax = plt.gca(); ax.set_xticks(x)
+        ax.set_xticklabels(slip_labels)
+        ax.set_ylabel(r"$a_i$ (mean $\pm$ std)")
+        ax.set_title(r"Components of $a_i$ vector")
+        ax.tick_params(axis='both', which='both', direction='in', top=True, right=True)
+        for s in ax.spines.values(): s.set_linewidth(2)
+
+        fpng = os.path.join(self.args.fig_dir, "ai_vector_bar.png")
+        fpdf = os.path.join(self.args.fig_dir, "ai_vector_bar.pdf")
+        plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+
+        # ---- Write CSV + LaTeX table for mean ± std of the 6 components
+        stats_csv = os.path.join(self.args.out_dir, "ai_vector_stats.csv")
+        with open(stats_csv, "w") as f:
+            f.write("component,mean,std\n")
+            for lbl, m, s in zip(slip_labels, mu, sd):
+                f.write(f"{lbl},{m:.6f},{s:.6f}\n")
+        print(f"---> wrote a_i stats CSV: {stats_csv}")
+        stats_tex = os.path.join(self.args.out_dir, "ai_vector_table.tex")
+        with open(stats_tex, "w") as f:
+            f.write("% Mean ± std for a_i vector components (6 entries)\n")
+            f.write("\\begin{tabular}{lcc}\\hline\nComponent & Mean & Std \\\\ \\hline\n")
+            for lbl, m, s in zip(slip_labels, mu, sd):
+                f.write(f"{lbl} & {m:.4f} & {s:.4f} \\\\ \n")
+            f.write("\\hline\\end{tabular}\n")
+        print(f"---> wrote a_i LaTeX table: {stats_tex}")
+
     def plot_aij_per_material(self):
-        """For each material (composition), print and save heatmaps of a_ij for every sample."""
+        """For each material (composition), print and save heatmaps of a_ij for every sample.
+        For a_i model, save vector values instead of matrices."""
         self.model.eval()
         with torch.no_grad():
             z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
-            A = self.model.subModel1.a_layer(z)                       # (N,6,6)
-            A = 0.5 * (A + A.transpose(-1, -2))
+            a_output = self.model.subModel1.a_layer(z)               # (N,6) or (N,6,6)
+            
+        if self.args.model_option == 'a_ij':
+            A = 0.5 * (a_output + a_output.transpose(-1, -2))
             A_np = A.detach().cpu().numpy()                           # (N,6,6)
-
+            self._plot_aij_matrices_per_material(A_np)
+        elif self.args.model_option == 'a_i':
+            a_np = a_output.detach().cpu().numpy()                    # (N,6)
+            self._plot_ai_vectors_per_material(a_np)
+    
+    def _plot_aij_matrices_per_material(self, A_np):
+        """Plot a_ij matrices for each material."""
         labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
         counts = [1, 2, 8, 7, 6, 9, 17]
         # slip_labels = ['$\gamma^{110}$', '$\tau^{110}$', '$\gamma^{112}$',
@@ -340,16 +416,57 @@ class StrengthTrainer:
                 plt.close()
             start = end
 
+    def _plot_ai_vectors_per_material(self, a_np):
+        """Plot a_i vectors for each material."""
+        labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        counts = [1, 2, 8, 7, 6, 9, 17]
+        slip_labels = ['1', '2', '3', '4', '5', '6']
+
+        start = 0
+        for name, cnt in zip(labels, counts):
+            end = start + cnt
+            vecs = a_np[start:end]
+            for k, v in enumerate(vecs, start=1):
+                print(f"\n=== a_i for {name}, sample {k}/{cnt} ===")
+                print(" ".join(f"{v[i]:.3f}" for i in range(6)))
+                plt.figure(figsize=(8, 5))
+                plt.rcParams['font.family'] = 'Times New Roman'
+                plt.rcParams['font.size'] = 20
+                plt.rcParams['mathtext.fontset'] = 'stix'
+                x = np.arange(len(v))
+                plt.bar(x, v, color='lightgreen', edgecolor='black')
+                ax = plt.gca()
+                ax.set_xticks(x)
+                ax.set_xticklabels(slip_labels)
+                ax.set_ylabel(r"$a_i$")
+                ax.set_title(rf"$a_i$ — {name} (sample {k}/{cnt})")
+                for s in ax.spines.values(): s.set_linewidth(2)
+                ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+                fpng = os.path.join(self.args.fig_dir, f"ai_{name}_s{k}.png")
+                fpdf = os.path.join(self.args.fig_dir, f"ai_{name}_s{k}.pdf")
+                plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+                plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+                plt.close()
+            start = end
+
     def print_aij_mean_std_table(self):
-        """Print and export LaTeX for mean (std) of the fitted 6x6 a_ij over the dataset."""
+        """Print and export LaTeX for mean (std) of the fitted a_ij/a_i over the dataset."""
         self.model.eval()
         with torch.no_grad():
-            # Build context and evaluate a_ij(z) for all samples
+            # Build context and evaluate a_ij(z) or a_i(z) for all samples
             z = self.model._build_context(self.TP, self.SR, self.GS)   # (N,3)
-            A = self.model.subModel1.a_layer(z)                        # (N,6,6)
-            A = 0.5 * (A + A.transpose(-1, -2))                        # enforce symmetry
-            A_np = A.detach().cpu().numpy()                            # (N,6,6)
-
+            a_output = self.model.subModel1.a_layer(z)                # (N,6) or (N,6,6)
+            
+        if self.args.model_option == 'a_ij':
+            A = 0.5 * (a_output + a_output.transpose(-1, -2))         # enforce symmetry
+            A_np = A.detach().cpu().numpy()                           # (N,6,6)
+            self._print_aij_matrix_table(A_np)
+        elif self.args.model_option == 'a_i':
+            a_np = a_output.detach().cpu().numpy()                    # (N,6)
+            self._print_ai_vector_table(a_np)
+    
+    def _print_aij_matrix_table(self, A_np):
+        """Print table for a_ij matrix model."""
         mu = A_np.mean(axis=0)  # (6,6)
         sd = A_np.std(axis=0)   # (6,6)
 
@@ -373,7 +490,6 @@ class StrengthTrainer:
         print(f"---> saved data: {std_csv}")
 
         # ---------- LaTeX table ----------
-        # Use simple i/j indices in headers; swap with your slip labels if preferred.
         latex_lines = []
         latex_lines += [
             r"\begin{table*}[htp]",
@@ -396,6 +512,51 @@ class StrengthTrainer:
             ""
         ]
         tex_path = os.path.join(self.args.out_dir, "aij_mean_std_table.tex")
+        with open(tex_path, "w") as f:
+            f.write("\n".join(latex_lines))
+        print(f"---> wrote LaTeX table: {tex_path}")
+    
+    def _print_ai_vector_table(self, a_np):
+        """Print table for a_i vector model."""
+        mu = a_np.mean(axis=0)  # (6,)
+        sd = a_np.std(axis=0)   # (6,)
+
+        # ---------- Console pretty print ----------
+        print("\n=== Fitted a_i mean (std) over dataset ===")
+        print("Component | Mean (Std)")
+        print("-" * 20)
+        for i in range(6):
+            print(f"   {i+1}     | {mu[i]:.3f} ({sd[i]:.3f})")
+
+        # ---------- Also save CSVs for mean and std ----------
+        os.makedirs(self.args.out_dir, exist_ok=True)
+        mean_csv = os.path.join(self.args.out_dir, "ai_mean.csv")
+        std_csv  = os.path.join(self.args.out_dir, "ai_std.csv")
+        np.savetxt(mean_csv, mu, delimiter=",", fmt="%.6f")
+        np.savetxt(std_csv,  sd, delimiter=",", fmt="%.6f")
+        print(f"---> saved data: {mean_csv}")
+        print(f"---> saved data: {std_csv}")
+
+        # ---------- LaTeX table ----------
+        latex_lines = []
+        latex_lines += [
+            r"\begin{table}[htp]",
+            r"\caption{Mean (std) of fitted vector $a_i(z)$ over all samples.}",
+            r"\label{tbl:ai_mean_std}",
+            r"\centering",
+            r"\begin{tabular}{ccc}",
+            r"\hline",
+            r"Component & Mean & Std \\ \hline",
+        ]
+        for i in range(6):
+            latex_lines.append(f"{i+1} & {mu[i]:.3f} & {sd[i]:.3f} \\\\")
+        latex_lines += [
+            r"\hline",
+            r"\end{tabular}",
+            r"\end{table}",
+            ""
+        ]
+        tex_path = os.path.join(self.args.out_dir, "ai_mean_std_table.tex")
         with open(tex_path, "w") as f:
             f.write("\n".join(latex_lines))
         print(f"---> wrote LaTeX table: {tex_path}")
