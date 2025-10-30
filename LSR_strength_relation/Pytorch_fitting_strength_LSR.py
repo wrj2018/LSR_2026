@@ -23,13 +23,19 @@ def parse_args():
     p.add_argument("--log_int", type=int, default=1000)
     p.add_argument("--model_option", choices=["a_ij","a_i"], default="a_ij", 
                    help="Model option: 'a_ij' for 6x6 matrix mixing, 'a_i' for 6-element vector mixing")
+    p.add_argument("--load_cache", action="store_true",
+                   help="Load previous model if it exists; otherwise train from scratch")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     trainer = StrengthTrainer(args)
-    if not trainer.load_model_if_exists():
+    # Only attempt to load cached model if --load_cache flag is provided
+    model_loaded = False
+    if args.load_cache:
+        model_loaded = trainer.load_model_if_exists()
+    if not model_loaded:
         trainer.train()
         trainer.save_artifacts()
     y_pred = trainer.predict()
