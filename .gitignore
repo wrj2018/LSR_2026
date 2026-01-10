@@ -7,6 +7,16 @@
 *.log
 *.csv
 *.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.webp
+*.svg
+*.eps
+*.pdf
 *.out
 *.ckpt
 __pycache__/
