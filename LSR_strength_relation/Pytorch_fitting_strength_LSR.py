@@ -21,8 +21,8 @@ def parse_args():
     p.add_argument("--optimizer", choices=["SGD","Adam"], default="Adam")
     p.add_argument("--seed", type=int, default=21)
     p.add_argument("--log_int", type=int, default=1000)
-    p.add_argument("--model_option", choices=["a_ij","a_i"], default="a_ij", 
-                   help="Model option: 'a_ij' for 6x6 matrix mixing, 'a_i' for 6-element vector mixing")
+    p.add_argument("--model_option", choices=["a_ij","a_i","a_single","a_single_const"], default="a_ij", 
+                   help="Model option: 'a_ij' for 6x6 matrix mixing, 'a_i' for 6-element vector mixing, 'a_single' for context-dependent single scalar, 'a_single_const' for constant single scalar (no context)")
     p.add_argument("--load_cache", action="store_true",
                    help="Load previous model if it exists; otherwise train from scratch")
     return p.parse_args()

@@ -115,20 +115,47 @@ class StrengthTrainer:
             a_mean = a.mean(axis=0)                                               # (6,)
             fMean = os.path.join(self.args.out_dir, "ai_mean.csv")
             np.savetxt(fMean, a_mean, delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
+        elif self.args.model_option == 'a_single':
+            # ----- per-sample a_single(z) -----
+            a_scalar = a_output                                                    # (N,)
+            # Save scalar outputs
+            fa = os.path.join(self.args.out_dir, "asingle_scalars.npy")
+            np.save(fa, a_scalar); print(f"---> saved data: {fa}")
+            # Also save a quick-look mean a_single over the dataset
+            a_mean = a_scalar.mean()                                              # scalar
+            fMean = os.path.join(self.args.out_dir, "asingle_mean.csv")
+            np.savetxt(fMean, np.array([a_mean]), delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
+        elif self.args.model_option == 'a_single_const':
+            # ----- constant a_single (same for all samples) -----
+            a_const = a_output                                                    # (N,) but all values are identical
+            # Save scalar outputs (all same value)
+            fa = os.path.join(self.args.out_dir, "asingle_const_scalar.npy")
+            np.save(fa, a_const); print(f"---> saved data: {fa}")
+            # Save the constant value
+            a_value = a_const[0]                                                 # scalar (all are same)
+            fMean = os.path.join(self.args.out_dir, "asingle_const_value.csv")
+            np.savetxt(fMean, np.array([a_value]), delimiter=",", fmt="%.6f"); print(f"---> saved data: {fMean}")
         
-        # ----- RFF layer parameters (to reproduce a_ij(z) or a_i(z)) -----
+        # ----- RFF layer parameters (to reproduce a_ij(z), a_i(z), or a_single(z)) -----
         al = self.model.subModel1.a_layer
         if self.args.model_option == 'a_ij':
             rff_params_path = os.path.join(self.args.out_dir, "aij_rff_params.npz")
-        else:
+        elif self.args.model_option == 'a_i':
             rff_params_path = os.path.join(self.args.out_dir, "ai_rff_params.npz")
-        np.savez(rff_params_path,
-                 log_lengthscale=al.log_lengthscale.detach().cpu().numpy(),
-                 W_base=al.W_base.detach().cpu().numpy(),
-                 b=al.b.detach().cpu().numpy(),
-                 lin_weight=al.lin.weight.detach().cpu().numpy(),
-                 lin_bias=al.lin.bias.detach().cpu().numpy(),)
-        print(f"---> saved data: {rff_params_path}")
+        elif self.args.model_option == 'a_single':
+            rff_params_path = os.path.join(self.args.out_dir, "asingle_rff_params.npz")
+        else:  # a_single_const - save the raw parameter
+            param_path = os.path.join(self.args.out_dir, "asingle_const_param.txt")
+            np.savetxt(param_path, al._raw_param.detach().cpu().numpy(), fmt="%.6f"); print(f"---> saved data: {param_path}")
+            rff_params_path = None  # No RFF params for constant model
+        if rff_params_path is not None:
+            np.savez(rff_params_path,
+                     log_lengthscale=al.log_lengthscale.detach().cpu().numpy(),
+                     W_base=al.W_base.detach().cpu().numpy(),
+                     b=al.b.detach().cpu().numpy(),
+                     lin_weight=al.lin.weight.detach().cpu().numpy(),
+                     lin_bias=al.lin.bias.detach().cpu().numpy(),)
+            print(f"---> saved data: {rff_params_path}")
         # ----- physics parameters (unchanged) -----
         f3 = os.path.join(self.args.out_dir, "param_deltaH.txt")
         np.savetxt(f3, self.model.param_deltaH.detach().cpu().numpy(), fmt="%.4f"); print(f"---> saved data: {f3}")
@@ -235,11 +262,12 @@ class StrengthTrainer:
     def plot_aij_components(self):
         """Visualize fitted a_ij as (1) mean 6x6 heatmap and (2) 21-comp mean±std bar chart,
         and also WRITE LaTeX/CSV tables for the 21 upper-tri components (mean ± std).
-        For a_i model, visualize as 6-element vector bar chart."""
+        For a_i model, visualize as 6-element vector bar chart.
+        For a_single model, visualize as scalar distribution."""
         self.model.eval()
         with torch.no_grad():
             z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
-            a_output = self.model.subModel1.a_layer(z)               # (N,6) or (N,6,6)
+            a_output = self.model.subModel1.a_layer(z)               # (N,6), (N,6,6), or (N,)
             
         if self.args.model_option == 'a_ij':
             A = 0.5 * (a_output + a_output.transpose(-1, -2))
@@ -248,7 +276,13 @@ class StrengthTrainer:
         elif self.args.model_option == 'a_i':
             a_np = a_output.detach().cpu().numpy()                    # (N,6)
             self._plot_ai_vector_components(a_np)
-    
+        elif self.args.model_option == 'a_single':
+            a_np = a_output.detach().cpu().numpy()                    # (N,)
+            self._plot_asingle_scalar_components(a_np)
+        elif self.args.model_option == 'a_single_const':
+            a_np = a_output.detach().cpu().numpy()                    # (N,) all same value
+            self._plot_asingle_const_scalar_components(a_np)
+
     def _plot_aij_matrix_components(self, A_np):
         """Plot components for a_ij matrix model."""
         # ---- Figure 1: mean heatmap of a_ij ----
@@ -359,13 +393,95 @@ class StrengthTrainer:
             f.write("\\hline\\end{tabular}\n")
         print(f"---> wrote a_i LaTeX table: {stats_tex}")
 
+    def _plot_asingle_scalar_components(self, a_np):
+        """Plot components for a_single scalar model."""
+        # ---- Figure: a_single scalar distribution (histogram + stats) ----
+        mu = a_np.mean()                  # scalar
+        sd = a_np.std()                   # scalar
+        
+        plt.figure(figsize=(8, 5))
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 20
+        plt.rcParams['mathtext.fontset'] = 'stix'
+        
+        plt.hist(a_np, bins=30, color='lightcoral', edgecolor='black', alpha=0.7)
+        plt.axvline(mu, color='red', linestyle='--', linewidth=2, label=f'Mean = {mu:.4f}')
+        ax = plt.gca()
+        ax.set_xlabel(r"$a_{\mathrm{single}}$")
+        ax.set_ylabel("Frequency")
+        ax.set_title(f"Distribution of $a_{{\\mathrm{{single}}}}$ (mean = {mu:.4f}, std = {sd:.4f})")
+        ax.tick_params(axis='both', which='both', direction='in', top=True, right=True)
+        for s in ax.spines.values(): s.set_linewidth(2)
+        plt.legend(frameon=False)
+
+        fpng = os.path.join(self.args.fig_dir, "asingle_scalar_hist.png")
+        fpdf = os.path.join(self.args.fig_dir, "asingle_scalar_hist.pdf")
+        plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+
+        # ---- Write CSV + LaTeX table for mean ± std of the scalar
+        stats_csv = os.path.join(self.args.out_dir, "asingle_scalar_stats.csv")
+        with open(stats_csv, "w") as f:
+            f.write("statistic,value\n")
+            f.write(f"mean,{mu:.6f}\n")
+            f.write(f"std,{sd:.6f}\n")
+        print(f"---> wrote a_single stats CSV: {stats_csv}")
+        stats_tex = os.path.join(self.args.out_dir, "asingle_scalar_table.tex")
+        with open(stats_tex, "w") as f:
+            f.write("% Mean ± std for a_single scalar\n")
+            f.write("\\begin{tabular}{cc}\\hline\nStatistic & Value \\\\ \\hline\n")
+            f.write(f"Mean & {mu:.4f} \\\\ \n")
+            f.write(f"Std & {sd:.4f} \\\\ \n")
+            f.write("\\hline\\end{tabular}\n")
+        print(f"---> wrote a_single LaTeX table: {stats_tex}")
+
+    def _plot_asingle_const_scalar_components(self, a_np):
+        """Plot components for a_single_const constant scalar model."""
+        # Since all values are the same, just show a single bar
+        a_value = a_np[0]  # All values are identical
+        
+        plt.figure(figsize=(6, 5))
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 20
+        plt.rcParams['mathtext.fontset'] = 'stix'
+        
+        plt.bar([0], [a_value], color='lightcoral', edgecolor='black', width=0.5)
+        ax = plt.gca()
+        ax.set_xticks([0])
+        ax.set_xticklabels([''])
+        ax.set_ylabel(r"$a_{\mathrm{single,const}}$")
+        ax.set_title(f"Constant $a_{{\\mathrm{{single,const}}}}$ = {a_value:.6f}")
+        ax.set_ylim(0, max(1.0, a_value * 1.2))
+        ax.tick_params(axis='both', which='both', direction='in', top=True, right=True)
+        for s in ax.spines.values(): s.set_linewidth(2)
+
+        fpng = os.path.join(self.args.fig_dir, "asingle_const_scalar.png")
+        fpdf = os.path.join(self.args.fig_dir, "asingle_const_scalar.pdf")
+        plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+        plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+
+        # ---- Write CSV + LaTeX table for the constant value
+        stats_csv = os.path.join(self.args.out_dir, "asingle_const_scalar_stats.csv")
+        with open(stats_csv, "w") as f:
+            f.write("value\n")
+            f.write(f"{a_value:.6f}\n")
+        print(f"---> wrote a_single_const stats CSV: {stats_csv}")
+        stats_tex = os.path.join(self.args.out_dir, "asingle_const_scalar_table.tex")
+        with open(stats_tex, "w") as f:
+            f.write("% Constant a_single value\n")
+            f.write("\\begin{tabular}{c}\\hline\nValue \\\\ \\hline\n")
+            f.write(f"{a_value:.6f} \\\\ \n")
+            f.write("\\hline\\end{tabular}\n")
+        print(f"---> wrote a_single_const LaTeX table: {stats_tex}")
+
     def plot_aij_per_material(self):
         """For each material (composition), print and save heatmaps of a_ij for every sample.
-        For a_i model, save vector values instead of matrices."""
+        For a_i model, save vector values instead of matrices.
+        For a_single model, save scalar values."""
         self.model.eval()
         with torch.no_grad():
             z = self.model._build_context(self.TP, self.SR, self.GS)  # (N,3)
-            a_output = self.model.subModel1.a_layer(z)               # (N,6) or (N,6,6)
+            a_output = self.model.subModel1.a_layer(z)               # (N,6), (N,6,6), or (N,)
             
         if self.args.model_option == 'a_ij':
             A = 0.5 * (a_output + a_output.transpose(-1, -2))
@@ -374,7 +490,13 @@ class StrengthTrainer:
         elif self.args.model_option == 'a_i':
             a_np = a_output.detach().cpu().numpy()                    # (N,6)
             self._plot_ai_vectors_per_material(a_np)
-    
+        elif self.args.model_option == 'a_single':
+            a_np = a_output.detach().cpu().numpy()                    # (N,)
+            self._plot_asingle_scalars_per_material(a_np)
+        elif self.args.model_option == 'a_single_const':
+            a_np = a_output.detach().cpu().numpy()                    # (N,) all same value
+            self._plot_asingle_const_scalars_per_material(a_np)
+
     def _plot_aij_matrices_per_material(self, A_np):
         """Plot a_ij matrices for each material."""
         labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
@@ -449,13 +571,77 @@ class StrengthTrainer:
                 plt.close()
             start = end
 
+    def _plot_asingle_scalars_per_material(self, a_np):
+        """Plot a_single scalars for each material."""
+        labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        counts = [1, 2, 8, 7, 6, 9, 17]
+
+        start = 0
+        for name, cnt in zip(labels, counts):
+            end = start + cnt
+            scalars = a_np[start:end]
+            for k, s in enumerate(scalars, start=1):
+                print(f"\n=== a_single for {name}, sample {k}/{cnt} ===")
+                print(f"{s:.6f}")
+                plt.figure(figsize=(6, 4))
+                plt.rcParams['font.family'] = 'Times New Roman'
+                plt.rcParams['font.size'] = 20
+                plt.rcParams['mathtext.fontset'] = 'stix'
+                plt.bar([0], [s], color='lightcoral', edgecolor='black', width=0.5)
+                ax = plt.gca()
+                ax.set_xticks([0])
+                ax.set_xticklabels([''])
+                ax.set_ylabel(r"$a_{\mathrm{single}}$")
+                ax.set_title(f"$a_{{\\mathrm{{single}}}}$ — {name} (sample {k}/{cnt})")
+                ax.set_ylim(0, max(1.0, s * 1.2))
+                for s_ax in ax.spines.values(): s_ax.set_linewidth(2)
+                ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+                fpng = os.path.join(self.args.fig_dir, f"asingle_{name}_s{k}.png")
+                fpdf = os.path.join(self.args.fig_dir, f"asingle_{name}_s{k}.pdf")
+                plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+                plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+                plt.close()
+            start = end
+
+    def _plot_asingle_const_scalars_per_material(self, a_np):
+        """Plot a_single_const constant scalar for each material (all have same value)."""
+        labels = ['NbTaTi','HfNbTa','NbTiZr','HfNbTi','HfTaTi','HfNbTaTi','HfNbTaTiZr']
+        counts = [1, 2, 8, 7, 6, 9, 17]
+        a_value = a_np[0]  # All values are identical
+
+        start = 0
+        for name, cnt in zip(labels, counts):
+            end = start + cnt
+            for k in range(1, cnt + 1):
+                print(f"\n=== a_single_const for {name}, sample {k}/{cnt} ===")
+                print(f"{a_value:.6f}")
+                plt.figure(figsize=(6, 4))
+                plt.rcParams['font.family'] = 'Times New Roman'
+                plt.rcParams['font.size'] = 20
+                plt.rcParams['mathtext.fontset'] = 'stix'
+                plt.bar([0], [a_value], color='lightcoral', edgecolor='black', width=0.5)
+                ax = plt.gca()
+                ax.set_xticks([0])
+                ax.set_xticklabels([''])
+                ax.set_ylabel(r"$a_{\mathrm{single,const}}$")
+                ax.set_title(f"$a_{{\\mathrm{{single,const}}}}$ — {name} (sample {k}/{cnt})")
+                ax.set_ylim(0, max(1.0, a_value * 1.2))
+                for s_ax in ax.spines.values(): s_ax.set_linewidth(2)
+                ax.tick_params(axis='both', which='both', direction='in', width=2, length=6, top=True, right=True)
+                fpng = os.path.join(self.args.fig_dir, f"asingle_const_{name}_s{k}.png")
+                fpdf = os.path.join(self.args.fig_dir, f"asingle_const_{name}_s{k}.pdf")
+                plt.tight_layout(); plt.savefig(fpng, dpi=300); print(f"---> saved figure: {fpng}")
+                plt.savefig(fpdf); print(f"---> saved figure: {fpdf}")
+                plt.close()
+            start = end
+
     def print_aij_mean_std_table(self):
-        """Print and export LaTeX for mean (std) of the fitted a_ij/a_i over the dataset."""
+        """Print and export LaTeX for mean (std) of the fitted a_ij/a_i/a_single over the dataset."""
         self.model.eval()
         with torch.no_grad():
-            # Build context and evaluate a_ij(z) or a_i(z) for all samples
+            # Build context and evaluate a_ij(z), a_i(z), or a_single(z) for all samples
             z = self.model._build_context(self.TP, self.SR, self.GS)   # (N,3)
-            a_output = self.model.subModel1.a_layer(z)                # (N,6) or (N,6,6)
+            a_output = self.model.subModel1.a_layer(z)                # (N,6), (N,6,6), or (N,)
             
         if self.args.model_option == 'a_ij':
             A = 0.5 * (a_output + a_output.transpose(-1, -2))         # enforce symmetry
@@ -464,6 +650,12 @@ class StrengthTrainer:
         elif self.args.model_option == 'a_i':
             a_np = a_output.detach().cpu().numpy()                    # (N,6)
             self._print_ai_vector_table(a_np)
+        elif self.args.model_option == 'a_single':
+            a_np = a_output.detach().cpu().numpy()                    # (N,)
+            self._print_asingle_scalar_table(a_np)
+        elif self.args.model_option == 'a_single_const':
+            a_np = a_output.detach().cpu().numpy()                    # (N,) all same value
+            self._print_asingle_const_scalar_table(a_np)
     
     def _print_aij_matrix_table(self, A_np):
         """Print table for a_ij matrix model."""
@@ -557,6 +749,81 @@ class StrengthTrainer:
             ""
         ]
         tex_path = os.path.join(self.args.out_dir, "ai_mean_std_table.tex")
+        with open(tex_path, "w") as f:
+            f.write("\n".join(latex_lines))
+        print(f"---> wrote LaTeX table: {tex_path}")
+
+    def _print_asingle_scalar_table(self, a_np):
+        """Print table for a_single scalar model."""
+        mu = a_np.mean()  # scalar
+        sd = a_np.std()   # scalar
+
+        # ---------- Console pretty print ----------
+        print("\n=== Fitted a_single mean (std) over dataset ===")
+        print(f"Value: {mu:.6f} ({sd:.6f})")
+
+        # ---------- Also save CSVs for mean and std ----------
+        os.makedirs(self.args.out_dir, exist_ok=True)
+        mean_csv = os.path.join(self.args.out_dir, "asingle_mean.csv")
+        std_csv  = os.path.join(self.args.out_dir, "asingle_std.csv")
+        np.savetxt(mean_csv, np.array([mu]), delimiter=",", fmt="%.6f")
+        np.savetxt(std_csv,  np.array([sd]), delimiter=",", fmt="%.6f")
+        print(f"---> saved data: {mean_csv}")
+        print(f"---> saved data: {std_csv}")
+
+        # ---------- LaTeX table ----------
+        latex_lines = []
+        latex_lines += [
+            r"\begin{table}[htp]",
+            r"\caption{Mean (std) of fitted scalar $a_{\mathrm{single}}(z)$ over all samples.}",
+            r"\label{tbl:asingle_mean_std}",
+            r"\centering",
+            r"\begin{tabular}{cc}",
+            r"\hline",
+            r"Statistic & Value \\ \hline",
+            f"Mean & {mu:.6f} \\\\",
+            f"Std & {sd:.6f} \\\\",
+            r"\hline",
+            r"\end{tabular}",
+            r"\end{table}",
+            ""
+        ]
+        tex_path = os.path.join(self.args.out_dir, "asingle_mean_std_table.tex")
+        with open(tex_path, "w") as f:
+            f.write("\n".join(latex_lines))
+        print(f"---> wrote LaTeX table: {tex_path}")
+
+    def _print_asingle_const_scalar_table(self, a_np):
+        """Print table for a_single_const constant scalar model."""
+        a_value = a_np[0]  # All values are identical (constant)
+
+        # ---------- Console pretty print ----------
+        print("\n=== Fitted constant a_single_const value ===")
+        print(f"Value: {a_value:.6f}")
+
+        # ---------- Also save CSV for the constant value ----------
+        os.makedirs(self.args.out_dir, exist_ok=True)
+        value_csv = os.path.join(self.args.out_dir, "asingle_const_value.csv")
+        np.savetxt(value_csv, np.array([a_value]), delimiter=",", fmt="%.6f")
+        print(f"---> saved data: {value_csv}")
+
+        # ---------- LaTeX table ----------
+        latex_lines = []
+        latex_lines += [
+            r"\begin{table}[htp]",
+            r"\caption{Constant fitted scalar $a_{\mathrm{single,const}}$ (same for all samples).}",
+            r"\label{tbl:asingle_const_mean_std}",
+            r"\centering",
+            r"\begin{tabular}{c}",
+            r"\hline",
+            r"Value \\ \hline",
+            f"{a_value:.6f} \\\\",
+            r"\hline",
+            r"\end{tabular}",
+            r"\end{table}",
+            ""
+        ]
+        tex_path = os.path.join(self.args.out_dir, "asingle_const_value_table.tex")
         with open(tex_path, "w") as f:
             f.write("\n".join(latex_lines))
         print(f"---> wrote LaTeX table: {tex_path}")

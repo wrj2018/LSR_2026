@@ -161,15 +161,87 @@ class VectorizedRFFKernelLayer(nn.Module):
         y_bounded = torch.sigmoid(y)             # strictly in (0,1)
         return y_bounded
 
+class SingleScalarRFFKernelLayer(nn.Module):
+    """
+    Random Fourier Features approximation of an RBF kernel.
+    Given context z ∈ R^p, outputs a single scalar a(z).
+
+    a(z) is produced by a linear map from features φ(z) to a single
+    scalar, bounded to (0,1) via sigmoid. This scalar is then applied
+    uniformly to all 6 slip system components.
+    """
+    def __init__(self, in_features, n_features=512, ard=True):
+        super().__init__()
+        self.p = in_features
+        self.D = n_features
+        self.ard = ard
+        # Trainable lengthscales (log ℓ); ARD or shared
+        if ard: self.log_lengthscale = nn.Parameter(torch.zeros(self.p, dtype=_DTYPE))
+        else: self.log_lengthscale = nn.Parameter(torch.zeros(1, dtype=_DTYPE))
+        # Base Gaussian matrix W_base ~ N(0, 1); scaled by 1/ℓ to realize RBF frequencies
+        self.register_buffer("W_base", torch.randn(self.D, self.p, dtype=_DTYPE))
+        # Random phases b ~ Uniform(0, 2π)
+        self.register_buffer("b", 2 * math.pi * torch.rand(self.D, dtype=_DTYPE))
+        # Linear map to 1 output (single scalar)
+        self.lin = nn.Linear(self.D, 1, bias=True, dtype=_DTYPE)
+
+    def _features(self, z):
+        """
+        z: (B,p) -> φ(z): (B,D)
+        φ(z) = sqrt(2/D) * cos(W z + b)
+        with W_d,: ~ N(0, diag(1/ℓ^2))
+        """
+        if self.ard:
+            inv_ell = torch.exp(-self.log_lengthscale)          # (p,)
+            W = self.W_base * inv_ell.unsqueeze(0)              # (D,p)
+        else:
+            inv_ell = torch.exp(-self.log_lengthscale)          # scalar
+            W = self.W_base * inv_ell
+        proj = z @ W.T + self.b                                 # (B,D)
+        phi = math.sqrt(2.0 / self.D) * torch.cos(proj)
+        return phi
+
+    def forward(self, z):
+        """
+        z: (B,p) context -> a: (B,) scalar with value in (0,1)
+        """
+        phi = self._features(z)                  # (B,D)
+        y = self.lin(phi)                        # (B,1)
+        y_bounded = torch.sigmoid(y.squeeze(-1))  # (B,) strictly in (0,1)
+        return y_bounded
+
+class ConstantScalarLayer(nn.Module):
+    """
+    Constant scalar parameter a (no context dependence).
+    This is the most reduced model: a single learnable scalar parameter
+    that is constant across all samples and applied uniformly to all 6 components.
+    """
+    def __init__(self, in_features=None, n_features=None, ard=None):
+        # in_features, n_features, ard are ignored for constant model but kept for API consistency
+        super().__init__()
+        # Single learnable parameter (raw value, will be bounded via sigmoid)
+        self._raw_param = nn.Parameter(torch.zeros(1, dtype=_DTYPE))
+
+    def forward(self, z):
+        """
+        z: (B,p) context (ignored, kept for API consistency) -> a: (B,) scalar with value in (0,1)
+        """
+        # Broadcast the constant scalar to batch size
+        batch_size = z.shape[0]
+        a_scalar = torch.sigmoid(self._raw_param)  # (1,) strictly in (0,1)
+        return a_scalar.expand(batch_size)         # (B,) same value for all samples
+
 # ----------------------- SLP: apply a_ij(z) to LSR -----------------------
 class SLP(nn.Module):
     """
     Replaces the constant symmetric 6x6 with a context-dependent symmetric matrix a(z)
     computed by an RFF Gaussian-kernel layer. By default, z = [T, ln(ε̇), d].
     
-    Supports two model options:
+    Supports four model options:
     - 'a_ij': uses SymmetricRFFKernelLayer to output 6x6 matrix, applies LSR @ A
     - 'a_i': uses VectorizedRFFKernelLayer to output 6-element vector, applies element-wise multiplication
+    - 'a_single': uses SingleScalarRFFKernelLayer to output context-dependent single scalar, applies uniformly to all components
+    - 'a_single_const': uses ConstantScalarLayer to output constant single scalar (no context), applies uniformly to all components
     """
     def __init__(self, p_context=3, n_features=512, ard=True, model_option='a_ij'):
         super(SLP, self).__init__()
@@ -183,14 +255,21 @@ class SLP(nn.Module):
             self.a_layer = VectorizedRFFKernelLayer(in_features=p_context,
                                                   n_features=n_features,
                                                   ard=ard).to(device)
+        elif self.model_option == 'a_single':
+            self.a_layer = SingleScalarRFFKernelLayer(in_features=p_context,
+                                                    n_features=n_features,
+                                                    ard=ard).to(device)
+        elif self.model_option == 'a_single_const':
+            self.a_layer = ConstantScalarLayer().to(device)
         else:
-            raise ValueError(f"model_option must be 'a_ij' or 'a_i', got {model_option}")
+            raise ValueError(f"model_option must be 'a_ij', 'a_i', 'a_single', or 'a_single_const', got {model_option}")
     
     def forward(self, LSR_input, context_z):
         """
         LSR_input:  (B,6)
         context_z:  (B,p_context)
-        returns:    (B,6)  -> LSR' = LSR @ a(z) for a_ij, or LSR * a(z) for a_i
+        returns:    (B,6)  -> LSR' = LSR @ a(z) for a_ij, LSR * a(z) for a_i, 
+                    LSR * a_single(z) for a_single, or LSR * a_const for a_single_const
         """
         if self.model_option == 'a_ij':
             A = self.a_layer(context_z)                          # (B,6,6)
@@ -198,15 +277,21 @@ class SLP(nn.Module):
         elif self.model_option == 'a_i':
             a = self.a_layer(context_z)                           # (B,6)
             out = LSR_input * a                                   # element-wise multiplication
+        elif self.model_option == 'a_single':
+            a_scalar = self.a_layer(context_z)                    # (B,)
+            out = LSR_input * a_scalar.unsqueeze(-1)             # broadcast scalar to all 6 components
+        elif self.model_option == 'a_single_const':
+            a_const = self.a_layer(context_z)                     # (B,) constant across batch
+            out = LSR_input * a_const.unsqueeze(-1)              # broadcast constant scalar to all 6 components
         else:
-            raise ValueError(f"model_option must be 'a_ij' or 'a_i', got {self.model_option}")
+            raise ValueError(f"model_option must be 'a_ij', 'a_i', 'a_single', or 'a_single_const', got {self.model_option}")
         return out
 
 # ----------------------- Training model -----------------------
 class CustomModel(nn.Module):
     def __init__(self, p_context=3, n_features=512, ard=True, model_option='a_ij'):
         super(CustomModel, self).__init__()
-        # a_ij(z) or a_i(z) mixer for LSR
+        # a_ij(z), a_i(z), or a_single(z) mixer for LSR
         self.subModel1 = SLP(p_context=p_context, n_features=n_features, ard=ard, model_option=model_option).to(device)
 
         # deltaH for 7 alloys × 6 systems (raw params -> constrained)
