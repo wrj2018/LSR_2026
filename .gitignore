@@ -4,6 +4,7 @@
 *.pth
 *.txt
 *.pdf
+*.tex
 *.log
 *.csv
 *.png
